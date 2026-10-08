@@ -1,4 +1,5 @@
-﻿using GroveGames.Serialization;
+﻿using GroveGames.Database.Storage;
+using GroveGames.Serialization;
 
 namespace GroveGames.Database;
 
@@ -16,7 +17,17 @@ public sealed class FileDatabase : IDatabase
         ArgumentException.ThrowIfNullOrEmpty(directory);
         ArgumentNullException.ThrowIfNull(registry);
 
-        Directory.CreateDirectory(directory);
+        if (!Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+            var parent = Path.GetDirectoryName(Path.GetFullPath(directory));
+
+            if (parent is not null)
+            {
+                DiskSync.FlushDirectory(parent);
+            }
+        }
+
         _directory = directory;
         _serializer = new MessagePackSerializer(registry);
         _stores = new Dictionary<string, object>(StringComparer.Ordinal);

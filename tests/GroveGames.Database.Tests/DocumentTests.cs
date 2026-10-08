@@ -71,6 +71,29 @@ public sealed class DocumentTests : IDisposable
         Assert.True(new FileInfo(path).Length < before / 10);
     }
 
+    [Fact]
+    public void Reopen_OlderVersionValue_IsMigratedOnce()
+    {
+        using (var database = Open())
+        {
+            database.GetDocument<DocumentSettings>("audio").Set(new DocumentSettings { Volume = 0.25f, Language = "tr" });
+        }
+
+        DocumentAudioRenameVolume.Applied = 0;
+
+        using (var database = Open())
+        {
+            Assert.Equal(0.25f, database.GetDocument<DocumentAudio>("audio").Value.Master);
+        }
+
+        using var reopened = Open();
+        var audio = reopened.GetDocument<DocumentAudio>("audio").Value;
+
+        Assert.Equal(1, DocumentAudioRenameVolume.Applied);
+        Assert.Equal(0.25f, audio.Master);
+        Assert.Equal("tr", audio.Language);
+    }
+
     private FileDatabase Open()
     {
         return new FileDatabase(_directory, new FormatterRegistryBuilder().AddGroveGamesDatabaseTestsFormatters().Build());
@@ -82,4 +105,24 @@ public sealed class DocumentSettings
 {
     public float Volume = 1f;
     public string? Language;
+}
+
+[Schema(version: 2)]
+public sealed class DocumentAudio
+{
+    public float Master;
+    public string? Language;
+}
+
+public sealed class DocumentAudioRenameVolume : IMigration<DocumentAudio>
+{
+    public static int Applied;
+
+    public int FromVersion => 1;
+
+    public void Apply(DataValue root)
+    {
+        Applied++;
+        root.AsObject.Rename("volume", "master");
+    }
 }
