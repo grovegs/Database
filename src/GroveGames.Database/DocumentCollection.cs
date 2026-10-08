@@ -113,6 +113,32 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         _file.Dispose();
     }
 
+    private void Rewrite(List<StoredEntry> live, int version)
+    {
+        var contents = _file.Contents;
+        _file.BeginRewrite();
+
+        for (var i = 0; i < live.Count; i++)
+        {
+            var entry = live[i];
+            var key = _keyCodec.Read(contents.AsSpan(entry.PayloadStart, entry.PayloadLength), out var keyLength);
+
+            if (PayloadVersion.Read(contents.AsSpan(entry.PayloadStart + keyLength, entry.PayloadLength - keyLength)) < version)
+            {
+                var payload = _file.BeginEntry(EntryKind.Upsert);
+                _keyCodec.Write(payload, key);
+                _serializer.Serialize(_items[key], payload);
+                _file.CommitEntry();
+            }
+            else
+            {
+                _file.CopyEntry(entry);
+            }
+        }
+
+        _file.CommitRewrite();
+    }
+
     private void Load()
     {
         var contents = _file.Contents;
@@ -139,23 +165,30 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
             }
         }
 
+        var version = _serializer.Registry.GetVersion<T>();
         var live = new List<StoredEntry>(latest.Count);
+        var outdated = 0;
 
         foreach (var pair in latest)
         {
             var entry = entries[pair.Value];
             _keyCodec.Read(contents.AsSpan(entry.PayloadStart, entry.PayloadLength), out var keyLength);
-            var value = _serializer.Deserialize<T>(contents.AsMemory(entry.PayloadStart + keyLength, entry.PayloadLength - keyLength));
-            _items[pair.Key] = value!;
+            var payload = contents.AsMemory(entry.PayloadStart + keyLength, entry.PayloadLength - keyLength);
+            _items[pair.Key] = _serializer.Deserialize<T>(payload)!;
             live.Add(entry);
+
+            if (PayloadVersion.Read(payload.Span) < version)
+            {
+                outdated++;
+            }
         }
 
         var dead = entries.Count - live.Count;
 
-        if (dead > CompactionThreshold && dead > live.Count)
+        if (outdated > 0 || (dead > CompactionThreshold && dead > live.Count))
         {
             live.Sort(static (left, right) => left.Start.CompareTo(right.Start));
-            _file.Rewrite(live);
+            Rewrite(live, version);
         }
 
         _file.ReleaseContents();

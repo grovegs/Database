@@ -18,6 +18,7 @@ internal sealed class StoreFile : IDisposable
     private byte[] _scratch;
     private EntryKind _pendingKind;
     private FileStream _stream;
+    private FileStream? _rewrite;
     private bool _dirty;
     private bool _disposed;
 
@@ -29,6 +30,7 @@ internal sealed class StoreFile : IDisposable
         _payload = new ByteBuffer(256);
         _scratch = new byte[256];
         _pendingKind = EntryKind.Value;
+        _rewrite = null;
         _dirty = false;
         _disposed = false;
         Contents = contents;
@@ -48,7 +50,8 @@ internal sealed class StoreFile : IDisposable
             File.Delete(temporary);
         }
 
-        var contents = File.Exists(path) ? File.ReadAllBytes(path) : [];
+        var exists = File.Exists(path);
+        var contents = exists ? File.ReadAllBytes(path) : [];
         var entries = new List<StoredEntry>();
         var validLength = Parse(path, contents, kind, entries);
         var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
@@ -61,6 +64,11 @@ internal sealed class StoreFile : IDisposable
                 stream.Write(CreateHeader(kind), 0, HeaderLength);
                 DiskSync.Flush(stream);
                 validLength = HeaderLength;
+
+                if (!exists)
+                {
+                    DiskSync.FlushDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+                }
             }
             else if (validLength < contents.Length)
             {
@@ -101,8 +109,8 @@ internal sealed class StoreFile : IDisposable
         entry[4] = (byte)_pendingKind;
         payload.CopyTo(entry.Slice(EntryPrefixLength));
         BinaryPrimitives.WriteUInt32LittleEndian(entry.Slice(EntryPrefixLength + payload.Length), Crc32.Compute(entry.Slice(4, payload.Length + 1)));
-        _stream.Write(_scratch, 0, length);
-        _dirty = true;
+        (_rewrite ?? _stream).Write(_scratch, 0, length);
+        _dirty = _rewrite is null || _dirty;
     }
 
     public void Sync()
@@ -116,25 +124,27 @@ internal sealed class StoreFile : IDisposable
         _dirty = false;
     }
 
-    public void Rewrite(IReadOnlyList<StoredEntry> live)
+    public void BeginRewrite()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var temporary = _path + ".tmp";
+        _rewrite = new FileStream(_path + ".tmp", FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.None);
+        _rewrite.Write(CreateHeader(_kind), 0, HeaderLength);
+    }
 
-        using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.None))
-        {
-            output.Write(CreateHeader(_kind), 0, HeaderLength);
+    public void CopyEntry(StoredEntry entry)
+    {
+        _rewrite!.Write(Contents, entry.Start, entry.Length);
+    }
 
-            for (var i = 0; i < live.Count; i++)
-            {
-                output.Write(Contents, live[i].Start, live[i].Length);
-            }
-
-            DiskSync.Flush(output);
-        }
-
+    public void CommitRewrite()
+    {
+        var rewrite = _rewrite!;
+        DiskSync.Flush(rewrite);
+        rewrite.Dispose();
+        _rewrite = null;
         _stream.Dispose();
-        File.Replace(temporary, _path, null);
+        File.Replace(_path + ".tmp", _path, null);
+        DiskSync.FlushDirectory(Path.GetDirectoryName(Path.GetFullPath(_path))!);
         _stream = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
         _stream.Position = _stream.Length;
         _dirty = false;
@@ -155,6 +165,7 @@ internal sealed class StoreFile : IDisposable
 
         Sync();
         _disposed = true;
+        _rewrite?.Dispose();
         _stream.Dispose();
     }
 

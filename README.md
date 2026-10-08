@@ -78,6 +78,8 @@ Each document or collection is one file, `{name}.db`, in the database directory:
 - **Format:** an 8-byte header, then one entry per change: `[length][kind][payload][CRC32]`. The payload holds the key and the value in MessagePack.
 - **Opening:** a file is read once, keeping the latest value for each key, and everything is held in memory.
 - **Compaction:** if most of a file is overwritten or removed entries, it is rewritten into a temporary file, synced, and swapped in atomically. A leftover temporary file from an interrupted compaction is removed on the next open.
+- **Migrations:** values written by an older version of a type are migrated when the file is opened, and the file is then rewritten the same way with the migrated values, so each value is migrated only once.
+- **New files:** creating or replacing a file also syncs its folder, so a new file can't disappear after a power cut.
 
 ## Unity
 

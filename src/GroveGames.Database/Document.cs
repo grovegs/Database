@@ -62,11 +62,27 @@ public sealed class Document<T> : IDocument<T>, IStore
             }
         }
 
-        var value = latest < 0 ? new T() : _serializer.Deserialize<T>(_file.Contents.AsMemory(entries[latest].PayloadStart, entries[latest].PayloadLength)) ?? new T();
-
-        if (entries.Count > CompactionThreshold && latest >= 0)
+        if (latest < 0)
         {
-            _file.Rewrite([entries[latest]]);
+            _file.ReleaseContents();
+            return new T();
+        }
+
+        var payload = _file.Contents.AsMemory(entries[latest].PayloadStart, entries[latest].PayloadLength);
+        var value = _serializer.Deserialize<T>(payload) ?? new T();
+
+        if (PayloadVersion.Read(payload.Span) < _serializer.Registry.GetVersion<T>())
+        {
+            _file.BeginRewrite();
+            _serializer.Serialize(value, _file.BeginEntry(EntryKind.Value));
+            _file.CommitEntry();
+            _file.CommitRewrite();
+        }
+        else if (entries.Count > CompactionThreshold)
+        {
+            _file.BeginRewrite();
+            _file.CopyEntry(entries[latest]);
+            _file.CommitRewrite();
         }
 
         _file.ReleaseContents();

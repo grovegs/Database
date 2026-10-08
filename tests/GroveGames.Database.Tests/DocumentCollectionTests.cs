@@ -182,6 +182,47 @@ public sealed class DocumentCollectionTests : IDisposable
     }
 
     [Fact]
+    public void Reopen_OlderVersionEntries_AreMigratedOnce()
+    {
+        using (var database = Open())
+        {
+            var players = database.GetDocumentCollection<int, CollectionPlayer>("ranks", player => player.Id);
+            players.Upsert(new CollectionPlayer { Id = 1, Gold = 10 });
+            players.Upsert(new CollectionPlayer { Id = 2, Gold = 20 });
+        }
+
+        CollectionRankAddScore.Applied = 0;
+
+        using (var database = Open())
+        {
+            var ranks = database.GetDocumentCollection<int, CollectionRank>("ranks", rank => rank.Id);
+            Assert.Equal(20, ranks.Get(2).Score);
+        }
+
+        Assert.Equal(2, CollectionRankAddScore.Applied);
+
+        using var reopened = Open();
+        var reloaded = reopened.GetDocumentCollection<int, CollectionRank>("ranks", rank => rank.Id);
+
+        Assert.Equal(2, CollectionRankAddScore.Applied);
+        Assert.Equal(10, reloaded.Get(1).Score);
+        Assert.Equal(20, reloaded.Get(2).Score);
+    }
+
+    [Fact]
+    public void Open_MissingDirectory_CreatesIt()
+    {
+        var nested = Path.Combine(_directory, "nested", "deeper");
+
+        using (var database = new FileDatabase(nested, new FormatterRegistryBuilder().AddGroveGamesDatabaseTestsFormatters().Build()))
+        {
+            database.GetDocumentCollection<int, CollectionPlayer>("players", player => player.Id).Upsert(new CollectionPlayer { Id = 1 });
+        }
+
+        Assert.True(File.Exists(Path.Combine(nested, "players.db")));
+    }
+
+    [Fact]
     public void Upsert_StringAndGuidKeys_RoundTrip()
     {
         var id = Guid.NewGuid();
@@ -256,4 +297,24 @@ public sealed class CollectionProfileRenameName : IMigration<CollectionProfile>
 public sealed class CollectionTagged
 {
     public string? Tag;
+}
+
+[Schema(version: 2)]
+public sealed class CollectionRank
+{
+    public int Id;
+    public long Score;
+}
+
+public sealed class CollectionRankAddScore : IMigration<CollectionRank>
+{
+    public static int Applied;
+
+    public int FromVersion => 1;
+
+    public void Apply(DataValue root)
+    {
+        Applied++;
+        root.AsObject.Rename("gold", "score");
+    }
 }
