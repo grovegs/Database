@@ -106,7 +106,7 @@ dotnet pack -c Release
 Settled decisions. Ask before changing any of them.
 
 - **Synchronous API.** No `async`: `Upsert`, `Remove`, `Clear` and `Set` write before returning, and `Save()` syncs synchronously.
-- **Every change reaches the OS before the call returns.** Each entry is assembled in a reused buffer and written to an unbuffered `FileStream` with one `Write` call, so it survives an app crash or kill. Syncing to storage (`Flush(true)`) happens only in `Save()` and `Dispose()`, because it costs milliseconds.
+- **Every change reaches the OS before the call returns.** Each entry is assembled in a reused buffer and written to an unbuffered `FileStream` with one `Write` call, so it survives an app crash or kill. Syncing to storage happens only in `Save()`, `Dispose()` and compaction, because it costs milliseconds. `DiskSync` uses `fcntl(F_FULLFSYNC)` on Apple platforms, because Mono and IL2CPP implement `Flush(true)` as a plain `fsync` there, which leaves data in the drive cache; elsewhere it uses `Flush(true)`.
 - **One append-only file per document or collection.** Header: `GGDB`, format version, store kind. Entries: `[int32 payload length][kind][payload][CRC32 of kind and payload]`. Collection payloads are the key followed by the MessagePack value; document payloads are the value.
 - **Recovery on open.** Parsing stops at the first entry that is truncated or fails its checksum, and the file is truncated there. A leftover `.tmp` from an interrupted compaction is deleted.
 - **Compaction on open only.** When more than 16 entries are dead and dead entries outnumber live ones, live entries are copied byte for byte into `.tmp`, synced, and swapped in with `File.Replace`.

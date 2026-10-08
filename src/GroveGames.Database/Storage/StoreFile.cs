@@ -59,13 +59,13 @@ internal sealed class StoreFile : IDisposable
             {
                 stream.SetLength(0);
                 stream.Write(CreateHeader(kind), 0, HeaderLength);
-                stream.Flush(true);
+                DiskSync.Flush(stream);
                 validLength = HeaderLength;
             }
             else if (validLength < contents.Length)
             {
                 stream.SetLength(validLength);
-                stream.Flush(true);
+                DiskSync.Flush(stream);
             }
 
             stream.Position = validLength;
@@ -112,7 +112,7 @@ internal sealed class StoreFile : IDisposable
             return;
         }
 
-        _stream.Flush(true);
+        DiskSync.Flush(_stream);
         _dirty = false;
     }
 
@@ -130,7 +130,7 @@ internal sealed class StoreFile : IDisposable
                 output.Write(Contents, live[i].Start, live[i].Length);
             }
 
-            output.Flush(true);
+            DiskSync.Flush(output);
         }
 
         _stream.Dispose();
