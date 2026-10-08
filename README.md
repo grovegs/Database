@@ -106,14 +106,18 @@ Dispose `autoSave` before disposing the database.
 
 ### Dependency Injection
 
-With [GroveGames.DependencyInjection](https://github.com/grovegs/DependencyInjection) installed, register the database in your root installer, after the serialization registry:
+With [GroveGames.DependencyInjection](https://github.com/grovegs/DependencyInjection) installed, register the database in your root installer with the registry of your stored types:
 
 ```csharp
-builder.AddSerialization(registry);
-builder.AddDatabase();
+var registry = new FormatterRegistryBuilder()
+    .AddUnityFormatters()
+    .AddGameFormatters()
+    .Build();
+
+builder.AddDatabase(registry);
 ```
 
-`AddDatabase()` stores files in `Application.persistentDataPath/Database`; `AddDatabase(directory)` takes another folder. It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
+`AddDatabase(registry)` stores files in `Application.persistentDataPath/Database`; `AddDatabase(registry, directory)` takes another folder. It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database. Register the serializers with `AddSerialization(registry)` only if you also use them directly.
 
 ## Godot
 

@@ -7,14 +7,14 @@ namespace GroveGames.Database.Unity
 {
     public static class DatabaseContainerBuilderExtensions
     {
-        public static IContainerBuilder AddDatabase(this IContainerBuilder builder)
+        public static IContainerBuilder AddDatabase(this IContainerBuilder builder, FormatterRegistry registry)
         {
-            return builder.AddDatabase(Path.Combine(Application.persistentDataPath, "Database"));
+            return builder.AddDatabase(registry, Path.Combine(Application.persistentDataPath, "Database"));
         }
 
-        public static IContainerBuilder AddDatabase(this IContainerBuilder builder, string directory)
+        public static IContainerBuilder AddDatabase(this IContainerBuilder builder, FormatterRegistry registry, string directory)
         {
-            builder.AddSingleton<IDatabase>(resolver => new FileDatabase(directory, resolver.Resolve<FormatterRegistry>()));
+            builder.AddSingleton<IDatabase>(_ => new FileDatabase(directory, registry));
             return builder.AddSingleton(resolver => new DatabaseAutoSaveEntryPoint(resolver.Resolve<IDatabase>()));
         }
     }
