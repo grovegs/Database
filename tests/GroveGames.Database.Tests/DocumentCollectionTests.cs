@@ -214,7 +214,7 @@ public sealed class DocumentCollectionTests : IDisposable
     {
         var nested = Path.Combine(_directory, "nested", "deeper");
 
-        using (var database = new FileDatabase(nested, new FormatterRegistryBuilder().AddGroveGamesDatabaseTestsFormatters().Build()))
+        using (var database = new FileDatabase(nested))
         {
             database.GetDocumentCollection<int, CollectionPlayer>("players", player => player.Id).Upsert(new CollectionPlayer { Id = 1 });
         }
@@ -259,7 +259,7 @@ public sealed class DocumentCollectionTests : IDisposable
 
     private FileDatabase Open()
     {
-        return new FileDatabase(_directory, new FormatterRegistryBuilder().AddGroveGamesDatabaseTestsFormatters().Build());
+        return new FileDatabase(_directory);
     }
 
     private static IDocumentCollection<int, CollectionPlayer> Players(FileDatabase database)

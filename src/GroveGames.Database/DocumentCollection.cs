@@ -165,7 +165,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
             }
         }
 
-        var version = _serializer.Registry.GetVersion<T>();
+        var version = Formatters.GetVersion<T>();
         var live = new List<StoredEntry>(latest.Count);
         var outdated = 0;
 

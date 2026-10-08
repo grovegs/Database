@@ -36,8 +36,7 @@ public sealed class Player
     public long Gold;
 }
 
-var registry = new FormatterRegistryBuilder().AddGameFormatters().Build();
-using var database = new FileDatabase(path, registry);
+using var database = new FileDatabase(path);
 
 IDocumentCollection<int, Player> players = database.GetDocumentCollection<int, Player>("players", player => player.Id);
 players.Upsert(player);
@@ -93,12 +92,18 @@ Install the core through [NuGetForUnity](https://github.com/GlitchEnzo/NuGetForU
 }
 ```
 
+If stored types have Unity members such as `Vector3` or `Color`, also install [`com.grovegames.serialization`](https://github.com/grovegs/Serialization), which registers their formatters.
+
+### Settings
+
+`Project Settings > GroveGames > Database` sets the folder name, `Database` by default. The database is stored in `Application.persistentDataPath` under that folder.
+
 ### Saving Automatically
 
 `DatabaseAutoSave` calls `Save()` whenever the app loses focus and when it quits. On iOS and Android the app loses focus as it goes to the background, so changes are synced before the OS can kill it:
 
 ```csharp
-var database = new FileDatabase(Path.Combine(Application.persistentDataPath, "Database"), registry);
+var database = new FileDatabase(Path.Combine(Application.persistentDataPath, DatabaseSettings.GetOrCreate().FolderName));
 var autoSave = new DatabaseAutoSave(database);
 ```
 
@@ -106,14 +111,13 @@ Dispose `autoSave` before disposing the database.
 
 ### Dependency Injection
 
-With [GroveGames.DependencyInjection](https://github.com/grovegs/DependencyInjection) installed, register the database in your root installer, after the serialization registry:
+With [GroveGames.DependencyInjection](https://github.com/grovegs/DependencyInjection) installed, register the database in your root installer:
 
 ```csharp
-builder.AddSerialization(registry);
 builder.AddDatabase();
 ```
 
-`AddDatabase()` stores files in `Application.persistentDataPath/Database`; `AddDatabase(directory)` takes another folder. It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
+It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
 
 ## Godot
 

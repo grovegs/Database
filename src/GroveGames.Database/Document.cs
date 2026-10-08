@@ -71,7 +71,7 @@ public sealed class Document<T> : IDocument<T>, IStore
         var payload = _file.Contents.AsMemory(entries[latest].PayloadStart, entries[latest].PayloadLength);
         var value = _serializer.Deserialize<T>(payload) ?? new T();
 
-        if (PayloadVersion.Read(payload.Span) < _serializer.Registry.GetVersion<T>())
+        if (PayloadVersion.Read(payload.Span) < Formatters.GetVersion<T>())
         {
             _file.BeginRewrite();
             _serializer.Serialize(value, _file.BeginEntry(EntryKind.Value));

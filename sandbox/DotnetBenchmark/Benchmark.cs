@@ -18,7 +18,7 @@ public class Benchmark
     public void Setup()
     {
         _directory = Path.Combine(Path.GetTempPath(), "GroveGames.Database.Benchmark", Guid.NewGuid().ToString("N"));
-        _database = new FileDatabase(_directory, new FormatterRegistryBuilder().AddDotnetBenchmarkFormatters().Build());
+        _database = new FileDatabase(_directory);
         _players = _database.GetDocumentCollection<int, Player>("players", player => player.Id);
         _profile = _database.GetDocument<Player>("profile");
         _player = new Player { Id = 1, Name = "Hero", Level = 12, Gold = 4500, Experience = 0.5f };

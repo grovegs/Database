@@ -96,7 +96,7 @@ public sealed class DocumentTests : IDisposable
 
     private FileDatabase Open()
     {
-        return new FileDatabase(_directory, new FormatterRegistryBuilder().AddGroveGamesDatabaseTestsFormatters().Build());
+        return new FileDatabase(_directory);
     }
 }
 
