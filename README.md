@@ -93,7 +93,27 @@ Install the core through [NuGetForUnity](https://github.com/GlitchEnzo/NuGetForU
 }
 ```
 
-Use `Application.persistentDataPath` as the database directory.
+### Saving Automatically
+
+`DatabaseAutoSave` calls `Save()` whenever the app loses focus and when it quits. On iOS and Android the app loses focus as it goes to the background, so changes are synced before the OS can kill it:
+
+```csharp
+var database = new FileDatabase(Path.Combine(Application.persistentDataPath, "Database"), registry);
+var autoSave = new DatabaseAutoSave(database);
+```
+
+Dispose `autoSave` before disposing the database.
+
+### Dependency Injection
+
+With [GroveGames.DependencyInjection](https://github.com/grovegs/DependencyInjection) installed, register the database in your root installer, after the serialization registry:
+
+```csharp
+builder.AddSerialization(registry);
+builder.AddDatabase();
+```
+
+`AddDatabase()` stores files in `Application.persistentDataPath/Database`; `AddDatabase(directory)` takes another folder. It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
 
 ## Godot
 
