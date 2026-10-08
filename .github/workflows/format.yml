@@ -1,0 +1,22 @@
+name: 📝 Format
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: grovegs/workflows/.github/workflows/package-format.yml@v1.3.0
+    with:
+      files: "**/*.{json,md}"
+      dotnet-project: .
+      global-json-file: global.json

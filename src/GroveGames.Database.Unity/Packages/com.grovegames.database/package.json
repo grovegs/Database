@@ -1,0 +1,20 @@
+{
+  "name": "com.grovegames.database",
+  "version": "0.0.0",
+  "displayName": "GroveGames.Database",
+  "description": "Fast, crash-safe local document database for games on .NET, Unity and Godot",
+  "unity": "2021.3",
+  "documentationUrl": "https://github.com/grovegs/Database",
+  "changelogUrl": "https://github.com/grovegs/Database/releases",
+  "licensesUrl": "https://github.com/grovegs/Database/blob/main/LICENSE",
+  "keywords": [
+    "database",
+    "storage",
+    "save",
+    "document"
+  ],
+  "author": {
+    "name": "Grove Games",
+    "url": "https://github.com/grovegs"
+  }
+}

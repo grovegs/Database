@@ -1,0 +1,21 @@
+{
+    "name": "GroveGames.Database.Unity.Editor",
+    "rootNamespace": "GroveGames.Database.Unity.Editor",
+    "references": [
+        "GroveGames.Database.Unity"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "GroveGames.Database.dll",
+        "GroveGames.Serialization.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
