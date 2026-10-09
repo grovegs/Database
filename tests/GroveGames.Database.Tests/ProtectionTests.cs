@@ -72,6 +72,54 @@ public sealed class ProtectionTests : IDisposable
     }
 
     [Fact]
+    public void Reopen_NewKeyTrustingExistingFiles_ResignsThem()
+    {
+        byte[] newKey = [.. Enumerable.Reverse(s_key)];
+
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 120 });
+            database.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id).Upsert(new ProtectedItem { Id = 1, Count = 3 });
+        }
+
+        using (var database = Open(DatabaseProtection.TamperCheck(newKey, true)))
+        {
+            Assert.Equal(120, database.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+            Assert.Equal(3, database.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id).Get(1).Count);
+        }
+
+        using (var database = Open(DatabaseProtection.TamperCheck(newKey)))
+        {
+            Assert.Equal(120, database.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+            Assert.Equal(3, database.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id).Get(1).Count);
+        }
+
+        using var withOldKey = Open(DatabaseProtection.TamperCheck(s_key));
+
+        Assert.Throws<DatabaseTamperedException>(() => withOldKey.GetDocument<ProtectedWallet>("wallet"));
+    }
+
+    [Fact]
+    public void Reopen_NewKeyTrustingExistingFiles_SignsLaterWrites()
+    {
+        byte[] newKey = [.. Enumerable.Reverse(s_key)];
+
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 1 });
+        }
+
+        using (var database = Open(DatabaseProtection.TamperCheck(newKey, true)))
+        {
+            database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 2 });
+        }
+
+        using var reopened = Open(DatabaseProtection.TamperCheck(newKey));
+
+        Assert.Equal(2, reopened.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+    }
+
+    [Fact]
     public void Reopen_FileCopiedFromAnotherStore_ThrowsDatabaseTamperedException()
     {
         using (var database = Open(DatabaseProtection.TamperCheck(s_key)))

@@ -14,6 +14,11 @@ public abstract class DatabaseProtection
 
     public static DatabaseProtection TamperCheck(byte[] key)
     {
+        return TamperCheck(key, false);
+    }
+
+    public static DatabaseProtection TamperCheck(byte[] key, bool trustExistingFiles)
+    {
         ArgumentNullException.ThrowIfNull(key);
 
         if (key.Length < MinimumKeyLength)
@@ -21,7 +26,7 @@ public abstract class DatabaseProtection
             throw new ArgumentException($"The key must be at least {MinimumKeyLength} bytes.", nameof(key));
         }
 
-        return new TamperCheckProtection((byte[])key.Clone());
+        return new TamperCheckProtection((byte[])key.Clone(), trustExistingFiles);
     }
 
     internal abstract IEntrySigner CreateSigner(string storeName);
@@ -37,15 +42,17 @@ public abstract class DatabaseProtection
     private sealed class TamperCheckProtection : DatabaseProtection
     {
         private readonly byte[] _key;
+        private readonly bool _trustExistingFiles;
 
-        public TamperCheckProtection(byte[] key)
+        public TamperCheckProtection(byte[] key, bool trustExistingFiles)
         {
             _key = key;
+            _trustExistingFiles = trustExistingFiles;
         }
 
         internal override IEntrySigner CreateSigner(string storeName)
         {
-            return new HmacEntrySigner(_key, storeName);
+            return new HmacEntrySigner(_key, storeName, _trustExistingFiles);
         }
     }
 }
