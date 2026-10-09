@@ -9,12 +9,19 @@ public sealed class FileDatabase : IDatabase
 
     private readonly string _directory;
     private readonly MessagePackSerializer _serializer;
+    private readonly DatabaseProtection _protection;
     private readonly Dictionary<string, object> _stores;
     private bool _disposed;
 
     public FileDatabase(string directory)
+        : this(directory, DatabaseProtection.None)
+    {
+    }
+
+    public FileDatabase(string directory, DatabaseProtection protection)
     {
         ArgumentException.ThrowIfNullOrEmpty(directory);
+        ArgumentNullException.ThrowIfNull(protection);
 
         if (!Directory.Exists(directory))
         {
@@ -29,19 +36,20 @@ public sealed class FileDatabase : IDatabase
 
         _directory = directory;
         _serializer = new MessagePackSerializer();
+        _protection = protection;
         _stores = new Dictionary<string, object>(StringComparer.Ordinal);
         _disposed = false;
     }
 
     public IDocument<T> GetDocument<T>(string name) where T : new()
     {
-        return GetStore(name, path => new Document<T>(path, _serializer));
+        return GetStore(name, (path, signer) => new Document<T>(path, _serializer, signer));
     }
 
     public IDocumentCollection<TKey, T> GetDocumentCollection<TKey, T>(string name, Func<T, TKey> keySelector) where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(keySelector);
-        return GetStore(name, path => new DocumentCollection<TKey, T>(path, _serializer, keySelector));
+        return GetStore(name, (path, signer) => new DocumentCollection<TKey, T>(path, _serializer, keySelector, signer));
     }
 
     public void Save()
@@ -71,7 +79,7 @@ public sealed class FileDatabase : IDatabase
         _stores.Clear();
     }
 
-    private TStore GetStore<TStore>(string name, Func<string, TStore> create) where TStore : class
+    private TStore GetStore<TStore>(string name, Func<string, IEntrySigner, TStore> create) where TStore : class
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateName(name);
@@ -81,7 +89,19 @@ public sealed class FileDatabase : IDatabase
             return existing as TStore ?? throw new InvalidOperationException($"'{name}' is already open as a {existing.GetType().Name}.");
         }
 
-        var store = create(Path.Combine(_directory, name + Extension));
+        var signer = _protection.CreateSigner(name);
+        TStore store;
+
+        try
+        {
+            store = create(Path.Combine(_directory, name + Extension), signer);
+        }
+        catch
+        {
+            signer.Dispose();
+            throw;
+        }
+
         _stores.Add(name, store);
         return store;
     }

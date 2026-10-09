@@ -10,6 +10,8 @@ public class Benchmark
 {
     private string _directory = null!;
     private FileDatabase _database = null!;
+    private FileDatabase _protectedDatabase = null!;
+    private IDocumentCollection<int, Player> _protectedPlayers = null!;
     private IDocumentCollection<int, Player> _players = null!;
     private IDocument<Player> _profile = null!;
     private Player _player = null!;
@@ -20,6 +22,8 @@ public class Benchmark
         _directory = Path.Combine(Path.GetTempPath(), "GroveGames.Database.Benchmark", Guid.NewGuid().ToString("N"));
         _database = new FileDatabase(_directory);
         _players = _database.GetDocumentCollection<int, Player>("players", player => player.Id);
+        _protectedDatabase = new FileDatabase(Path.Combine(_directory, "protected"), DatabaseProtection.TamperCheck(new byte[32]));
+        _protectedPlayers = _protectedDatabase.GetDocumentCollection<int, Player>("players", player => player.Id);
         _profile = _database.GetDocument<Player>("profile");
         _player = new Player { Id = 1, Name = "Hero", Level = 12, Gold = 4500, Experience = 0.5f };
         _players.Upsert(_player);
@@ -29,6 +33,7 @@ public class Benchmark
     public void Cleanup()
     {
         _database.Dispose();
+        _protectedDatabase.Dispose();
         Directory.Delete(_directory, true);
     }
 
@@ -37,6 +42,13 @@ public class Benchmark
     {
         _player.Gold++;
         _players.Upsert(_player);
+    }
+
+    [Benchmark]
+    public void UpsertProtected()
+    {
+        _player.Gold++;
+        _protectedPlayers.Upsert(_player);
     }
 
     [Benchmark]
