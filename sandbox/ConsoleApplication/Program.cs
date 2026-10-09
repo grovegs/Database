@@ -8,9 +8,8 @@ public static class Program
     public static void Main()
     {
         var directory = Path.Combine(Path.GetTempPath(), "GroveGames.Database.Sample");
-        var registry = new FormatterRegistryBuilder().AddConsoleApplicationFormatters().Build();
 
-        using (var database = new FileDatabase(directory, registry))
+        using (var database = new FileDatabase(directory))
         {
             var players = database.GetDocumentCollection<int, Player>("players", player => player.Id);
             var settings = database.GetDocument<Settings>("settings");

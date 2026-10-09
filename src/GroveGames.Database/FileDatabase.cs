@@ -12,10 +12,9 @@ public sealed class FileDatabase : IDatabase
     private readonly Dictionary<string, object> _stores;
     private bool _disposed;
 
-    public FileDatabase(string directory, FormatterRegistry registry)
+    public FileDatabase(string directory)
     {
         ArgumentException.ThrowIfNullOrEmpty(directory);
-        ArgumentNullException.ThrowIfNull(registry);
 
         if (!Directory.Exists(directory))
         {
@@ -29,7 +28,7 @@ public sealed class FileDatabase : IDatabase
         }
 
         _directory = directory;
-        _serializer = new MessagePackSerializer(registry);
+        _serializer = new MessagePackSerializer();
         _stores = new Dictionary<string, object>(StringComparer.Ordinal);
         _disposed = false;
     }
