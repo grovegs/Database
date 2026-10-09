@@ -1,7 +1,9 @@
 {
     "name": "GroveGames.Database.Unity",
     "rootNamespace": "GroveGames.Database.Unity",
-    "references": [],
+    "references": [
+        "GUID:115894b283334fda919bd7952c224a1f"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

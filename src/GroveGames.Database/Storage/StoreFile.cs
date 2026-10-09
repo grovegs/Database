@@ -17,7 +17,8 @@ internal sealed class StoreFile : IDisposable
     private readonly StoreKind _kind;
     private readonly ByteBuffer _payload;
     private readonly IEntrySigner _signer;
-    private readonly bool _contentsAuthenticated;
+    private readonly int _contentsTagLength;
+    private readonly bool _resign;
     private byte[] _scratch;
     private EntryKind _pendingKind;
     private FileStream _stream;
@@ -31,7 +32,8 @@ internal sealed class StoreFile : IDisposable
         _kind = kind;
         _stream = stream;
         _signer = signer;
-        _contentsAuthenticated = contentsAuthenticated;
+        _contentsTagLength = contentsAuthenticated ? signer.TagLength : 0;
+        _resign = signer.TagLength > 0 && (!contentsAuthenticated || signer.TrustsExistingTags);
         _payload = new ByteBuffer(256);
         _scratch = new byte[256];
         _pendingKind = EntryKind.Value;
@@ -85,7 +87,7 @@ internal sealed class StoreFile : IDisposable
             stream.Position = validLength;
             var file = new StoreFile(path, kind, stream, contents, entries, signer, authenticated);
 
-            if (signer.TagLength > 0 && !authenticated)
+            if (file._resign)
             {
                 file.BeginRewrite();
 
@@ -155,14 +157,16 @@ internal sealed class StoreFile : IDisposable
 
     public void CopyEntry(StoredEntry entry)
     {
-        _rewrite!.Write(Contents, entry.Start, entry.Length);
-
-        if (_signer.TagLength > 0 && !_contentsAuthenticated)
+        if (!_resign)
         {
-            Span<byte> tag = stackalloc byte[_signer.TagLength];
-            _signer.Sign(Contents.AsSpan(entry.PayloadStart - 1, entry.PayloadLength + 1), tag);
-            _rewrite.Write(tag);
+            _rewrite!.Write(Contents, entry.Start, entry.Length);
+            return;
         }
+
+        _rewrite!.Write(Contents, entry.Start, entry.Length - _contentsTagLength);
+        Span<byte> tag = stackalloc byte[_signer.TagLength];
+        _signer.Sign(Contents.AsSpan(entry.PayloadStart - 1, entry.PayloadLength + 1), tag);
+        _rewrite.Write(tag);
     }
 
     public void CommitRewrite()
@@ -245,7 +249,7 @@ internal sealed class StoreFile : IDisposable
                 break;
             }
 
-            if (authenticated && !signer.Verify(contents.AsSpan(position + 4, payloadLength + 1), contents.AsSpan(checksumStart + ChecksumLength, tagLength)))
+            if (authenticated && !signer.TrustsExistingTags && !signer.Verify(contents.AsSpan(position + 4, payloadLength + 1), contents.AsSpan(checksumStart + ChecksumLength, tagLength)))
             {
                 throw new DatabaseTamperedException($"'{path}' was modified outside the database.");
             }

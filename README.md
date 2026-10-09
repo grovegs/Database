@@ -97,12 +97,13 @@ Each document or collection is one file, `{name}.db`, in the database directory:
 
 ## Unity
 
-Install the core through [NuGetForUnity](https://github.com/GlitchEnzo/NuGetForUnity) (`GroveGames.Database`), then add the package to `Packages/manifest.json`:
+Install the core through [NuGetForUnity](https://github.com/GlitchEnzo/NuGetForUnity) (`GroveGames.Database`), then add the package and [GroveGames.SecureStorage](https://github.com/grovegs/SecureStorage), which it requires, to `Packages/manifest.json`:
 
 ```json
 {
   "dependencies": {
-    "com.grovegames.database": "https://github.com/grovegs/Database.git?path=src/GroveGames.Database.Unity/Packages/com.grovegames.database"
+    "com.grovegames.database": "https://github.com/grovegs/Database.git?path=src/GroveGames.Database.Unity/Packages/com.grovegames.database",
+    "com.grovegames.securestorage": "https://github.com/grovegs/SecureStorage.git?path=src/GroveGames.SecureStorage.Unity/Packages/com.grovegames.securestorage"
   }
 }
 ```
@@ -115,14 +116,9 @@ If stored types have Unity members such as `Vector3` or `Color`, also install [`
 
 ### Tamper Protection in Unity
 
-Turn on **Tamper Protection** in `Project Settings > GroveGames > Database`, then register the key source in your root installer:
+Turn on **Tamper Protection** in `Project Settings > GroveGames > Database`, or call `SetTamperProtection(true)` on the builder. Nothing else is needed: on first use the package creates a random 32-byte key for the install and keeps it in SecureStorage, the Keychain on iOS and the Keystore on Android.
 
-```csharp
-builder.AddSingleton<IDatabaseKey, SecureStorageDatabaseKey>();
-builder.AddDatabase();
-```
-
-`IDatabaseKey.Value` returns the install's key, at least 16 bytes, for example a random key kept in the platform's secure storage. If protection is on and no `IDatabaseKey` is registered, `AddDatabase()` logs an error and opens the database without protection.
+The key never leaves the device, but the app's files move to a new device when a backup is restored. When the key had to be created and protected files already exist, those files are trusted once and signed with the new key, so a player who changes phones keeps their saves. If the key cannot be stored, the database logs an error and opens without protection.
 
 ### Overriding Settings in Code
 

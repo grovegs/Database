@@ -10,6 +10,8 @@ internal sealed class NoEntrySigner : IEntrySigner
 
     public int TagLength => 0;
 
+    public bool TrustsExistingTags => false;
+
     public void Sign(ReadOnlySpan<byte> data, Span<byte> tag)
     {
     }

@@ -40,5 +40,13 @@ namespace GroveGames.Database.Unity
             _tamperProtection = enabled;
             return this;
         }
+
+        public IDatabase Build()
+        {
+            var protection = _tamperProtection
+                ? DatabaseKeyStore.CreateProtection(new global::GroveGames.SecureStorage.Unity.SecureStorage())
+                : DatabaseProtection.None;
+            return new FileDatabase(Directory, protection);
+        }
     }
 }
