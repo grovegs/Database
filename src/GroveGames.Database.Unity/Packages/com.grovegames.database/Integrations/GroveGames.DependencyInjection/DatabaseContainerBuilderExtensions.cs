@@ -1,4 +1,4 @@
-using System.IO;
+using System;
 using GroveGames.DependencyInjection;
 using UnityEngine;
 
@@ -8,18 +8,23 @@ namespace GroveGames.Database.Unity
     {
         public static IContainerBuilder AddDatabase(this IContainerBuilder builder)
         {
+            return builder.AddDatabase(_ => { });
+        }
+
+        public static IContainerBuilder AddDatabase(this IContainerBuilder builder, Action<IDatabaseBuilder> configure)
+        {
             builder.AddSingleton<IDatabase>(resolver =>
             {
-                var settings = DatabaseSettings.GetOrCreate();
-                var directory = Path.Combine(Application.persistentDataPath, settings.FolderName);
-                return new FileDatabase(directory, CreateProtection(settings, resolver));
+                var databaseBuilder = new DatabaseBuilder(DatabaseSettings.GetOrCreate());
+                configure(databaseBuilder);
+                return new FileDatabase(databaseBuilder.Directory, CreateProtection(databaseBuilder, resolver));
             });
             return builder.AddSingleton(resolver => new DatabaseAutoSaveEntryPoint(resolver.Resolve<IDatabase>()));
         }
 
-        private static DatabaseProtection CreateProtection(DatabaseSettings settings, IObjectResolver resolver)
+        private static DatabaseProtection CreateProtection(DatabaseBuilder databaseBuilder, IObjectResolver resolver)
         {
-            if (!settings.TamperProtection)
+            if (!databaseBuilder.TamperProtection)
             {
                 return DatabaseProtection.None;
             }
@@ -29,7 +34,7 @@ namespace GroveGames.Database.Unity
                 return DatabaseProtection.TamperCheck(key.Value);
             }
 
-            Debug.LogError("Tamper Protection is on in Project Settings > GroveGames > Database, but no IDatabaseKey is registered. Register one in the root installer or turn Tamper Protection off. The database is opened without protection.");
+            Debug.LogError("Tamper protection is on, but no IDatabaseKey is registered. Register one in the root installer or turn tamper protection off. The database is opened without protection.");
             return DatabaseProtection.None;
         }
     }
