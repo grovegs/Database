@@ -16,13 +16,13 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
     private readonly IKeyCodec<TKey> _keyCodec;
     private readonly Dictionary<TKey, T> _items;
 
-    internal DocumentCollection(string path, MessagePackSerializer serializer, Func<T, TKey> keySelector, EntryAuthenticator? authenticator)
+    internal DocumentCollection(string path, MessagePackSerializer serializer, Func<T, TKey> keySelector, IEntrySigner signer)
     {
         _serializer = serializer;
         _keySelector = keySelector;
         _keyCodec = KeyCodecs.Create<TKey>();
         _items = [];
-        _file = StoreFile.Open(path, StoreKind.Collection, authenticator);
+        _file = StoreFile.Open(path, StoreKind.Collection, signer);
 
         try
         {

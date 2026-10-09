@@ -12,8 +12,10 @@ namespace GroveGames.Database.Unity
         private static DatabaseSettings? s_loaded;
 
         [SerializeField] private string _folderName = "Database";
+        [SerializeField] private bool _tamperProtection;
 
         public string FolderName => _folderName;
+        public bool TamperProtection => _tamperProtection;
 
         private void OnEnable()
         {

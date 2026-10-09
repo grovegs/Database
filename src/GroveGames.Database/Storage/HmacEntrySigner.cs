@@ -3,9 +3,9 @@ using System.Text;
 
 namespace GroveGames.Database.Storage;
 
-internal sealed class EntryAuthenticator : IDisposable
+internal sealed class HmacEntrySigner : IEntrySigner
 {
-    public const int TagLength = 16;
+    private const int Length = 16;
 
     private const int HashLength = 32;
 
@@ -15,7 +15,7 @@ internal sealed class EntryAuthenticator : IDisposable
     private readonly HMACSHA256 _hmac;
 #endif
 
-    public EntryAuthenticator(byte[] key, string name)
+    public HmacEntrySigner(byte[] key, string name)
     {
         using var derivation = new HMACSHA256(key);
         var fileKey = derivation.ComputeHash(Encoding.UTF8.GetBytes(name));
@@ -26,7 +26,9 @@ internal sealed class EntryAuthenticator : IDisposable
 #endif
     }
 
-    public void Compute(ReadOnlySpan<byte> data, Span<byte> tag)
+    public int TagLength => Length;
+
+    public void Sign(ReadOnlySpan<byte> data, Span<byte> tag)
     {
         Span<byte> hash = stackalloc byte[HashLength];
 #if NET6_0_OR_GREATER
@@ -34,13 +36,13 @@ internal sealed class EntryAuthenticator : IDisposable
 #else
         _hmac.TryComputeHash(data, hash, out _);
 #endif
-        hash.Slice(0, TagLength).CopyTo(tag);
+        hash.Slice(0, Length).CopyTo(tag);
     }
 
     public bool Verify(ReadOnlySpan<byte> data, ReadOnlySpan<byte> tag)
     {
-        Span<byte> expected = stackalloc byte[TagLength];
-        Compute(data, expected);
+        Span<byte> expected = stackalloc byte[Length];
+        Sign(data, expected);
         return CryptographicOperations.FixedTimeEquals(expected, tag);
     }
 

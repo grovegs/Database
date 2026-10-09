@@ -6,27 +6,22 @@ namespace GroveGames.Database;
 public sealed class FileDatabase : IDatabase
 {
     private const string Extension = ".db";
-    private const int MinimumKeyLength = 16;
 
     private readonly string _directory;
     private readonly MessagePackSerializer _serializer;
-    private readonly byte[]? _key;
+    private readonly DatabaseProtection _protection;
     private readonly Dictionary<string, object> _stores;
     private bool _disposed;
 
     public FileDatabase(string directory)
-        : this(directory, null)
+        : this(directory, DatabaseProtection.None)
     {
     }
 
-    public FileDatabase(string directory, byte[]? key)
+    public FileDatabase(string directory, DatabaseProtection protection)
     {
         ArgumentException.ThrowIfNullOrEmpty(directory);
-
-        if (key is not null && key.Length < MinimumKeyLength)
-        {
-            throw new ArgumentException($"The key must be at least {MinimumKeyLength} bytes.", nameof(key));
-        }
+        ArgumentNullException.ThrowIfNull(protection);
 
         if (!Directory.Exists(directory))
         {
@@ -41,20 +36,20 @@ public sealed class FileDatabase : IDatabase
 
         _directory = directory;
         _serializer = new MessagePackSerializer();
-        _key = key is null ? null : (byte[])key.Clone();
+        _protection = protection;
         _stores = new Dictionary<string, object>(StringComparer.Ordinal);
         _disposed = false;
     }
 
     public IDocument<T> GetDocument<T>(string name) where T : new()
     {
-        return GetStore(name, (path, authenticator) => new Document<T>(path, _serializer, authenticator));
+        return GetStore(name, (path, signer) => new Document<T>(path, _serializer, signer));
     }
 
     public IDocumentCollection<TKey, T> GetDocumentCollection<TKey, T>(string name, Func<T, TKey> keySelector) where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(keySelector);
-        return GetStore(name, (path, authenticator) => new DocumentCollection<TKey, T>(path, _serializer, keySelector, authenticator));
+        return GetStore(name, (path, signer) => new DocumentCollection<TKey, T>(path, _serializer, keySelector, signer));
     }
 
     public void Save()
@@ -84,7 +79,7 @@ public sealed class FileDatabase : IDatabase
         _stores.Clear();
     }
 
-    private TStore GetStore<TStore>(string name, Func<string, EntryAuthenticator?, TStore> create) where TStore : class
+    private TStore GetStore<TStore>(string name, Func<string, IEntrySigner, TStore> create) where TStore : class
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateName(name);
@@ -94,16 +89,16 @@ public sealed class FileDatabase : IDatabase
             return existing as TStore ?? throw new InvalidOperationException($"'{name}' is already open as a {existing.GetType().Name}.");
         }
 
-        var authenticator = _key is null ? null : new EntryAuthenticator(_key, name);
+        var signer = _protection.CreateSigner(name);
         TStore store;
 
         try
         {
-            store = create(Path.Combine(_directory, name + Extension), authenticator);
+            store = create(Path.Combine(_directory, name + Extension), signer);
         }
         catch
         {
-            authenticator?.Dispose();
+            signer.Dispose();
             throw;
         }
 

@@ -62,11 +62,13 @@ namespace GroveGames.Database.Unity.Editor
                     container.Add(assetField);
 
                     container.Add(new PropertyField(serializedObject.FindProperty("_folderName"), "Folder Name"));
+                    container.Add(new PropertyField(serializedObject.FindProperty("_tamperProtection"), "Tamper Protection"));
+                    container.Add(new HelpBox("Tamper Protection rejects saves edited outside the game. It needs an IDatabaseKey registered in the root installer.", HelpBoxMessageType.Info));
 
                     rootElement.Add(container);
                     rootElement.Bind(serializedObject);
                 },
-                keywords = new System.Collections.Generic.HashSet<string>(new[] { "Database", "Save", "Folder", "Grove Games" })
+                keywords = new System.Collections.Generic.HashSet<string>(new[] { "Database", "Save", "Folder", "Tamper", "Protection", "Grove Games" })
             };
         }
 

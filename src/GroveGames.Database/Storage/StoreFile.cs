@@ -16,7 +16,7 @@ internal sealed class StoreFile : IDisposable
     private readonly string _path;
     private readonly StoreKind _kind;
     private readonly ByteBuffer _payload;
-    private readonly EntryAuthenticator? _authenticator;
+    private readonly IEntrySigner _signer;
     private readonly bool _contentsAuthenticated;
     private byte[] _scratch;
     private EntryKind _pendingKind;
@@ -25,12 +25,12 @@ internal sealed class StoreFile : IDisposable
     private bool _dirty;
     private bool _disposed;
 
-    private StoreFile(string path, StoreKind kind, FileStream stream, byte[] contents, List<StoredEntry> entries, EntryAuthenticator? authenticator, bool contentsAuthenticated)
+    private StoreFile(string path, StoreKind kind, FileStream stream, byte[] contents, List<StoredEntry> entries, IEntrySigner signer, bool contentsAuthenticated)
     {
         _path = path;
         _kind = kind;
         _stream = stream;
-        _authenticator = authenticator;
+        _signer = signer;
         _contentsAuthenticated = contentsAuthenticated;
         _payload = new ByteBuffer(256);
         _scratch = new byte[256];
@@ -46,7 +46,7 @@ internal sealed class StoreFile : IDisposable
 
     public List<StoredEntry> Entries { get; private set; }
 
-    public static StoreFile Open(string path, StoreKind kind, EntryAuthenticator? authenticator)
+    public static StoreFile Open(string path, StoreKind kind, IEntrySigner signer)
     {
         var temporary = path + ".tmp";
 
@@ -58,7 +58,7 @@ internal sealed class StoreFile : IDisposable
         var exists = File.Exists(path);
         var contents = exists ? File.ReadAllBytes(path) : [];
         var entries = new List<StoredEntry>();
-        var validLength = Parse(path, contents, kind, entries, authenticator, out var authenticated);
+        var validLength = Parse(path, contents, kind, entries, signer, out var authenticated);
         var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
 
         try
@@ -66,10 +66,10 @@ internal sealed class StoreFile : IDisposable
             if (validLength == 0)
             {
                 stream.SetLength(0);
-                stream.Write(CreateHeader(kind, authenticator != null), 0, HeaderLength);
+                stream.Write(CreateHeader(kind, signer.TagLength > 0), 0, HeaderLength);
                 DiskSync.Flush(stream);
                 validLength = HeaderLength;
-                authenticated = authenticator != null;
+                authenticated = signer.TagLength > 0;
 
                 if (!exists)
                 {
@@ -83,9 +83,9 @@ internal sealed class StoreFile : IDisposable
             }
 
             stream.Position = validLength;
-            var file = new StoreFile(path, kind, stream, contents, entries, authenticator, authenticated);
+            var file = new StoreFile(path, kind, stream, contents, entries, signer, authenticated);
 
-            if (authenticator != null && !authenticated)
+            if (signer.TagLength > 0 && !authenticated)
             {
                 file.BeginRewrite();
 
@@ -117,7 +117,7 @@ internal sealed class StoreFile : IDisposable
     public void CommitEntry()
     {
         var payload = _payload.WrittenSpan;
-        var tagLength = _authenticator == null ? 0 : EntryAuthenticator.TagLength;
+        var tagLength = _signer.TagLength;
         var length = EntryPrefixLength + payload.Length + ChecksumLength + tagLength;
 
         if (_scratch.Length < length)
@@ -130,7 +130,7 @@ internal sealed class StoreFile : IDisposable
         entry[4] = (byte)_pendingKind;
         payload.CopyTo(entry.Slice(EntryPrefixLength));
         BinaryPrimitives.WriteUInt32LittleEndian(entry.Slice(EntryPrefixLength + payload.Length), Crc32.Compute(entry.Slice(4, payload.Length + 1)));
-        _authenticator?.Compute(entry.Slice(4, payload.Length + 1), entry.Slice(EntryPrefixLength + payload.Length + ChecksumLength));
+        _signer.Sign(entry.Slice(4, payload.Length + 1), entry.Slice(EntryPrefixLength + payload.Length + ChecksumLength));
         (_rewrite ?? _stream).Write(_scratch, 0, length);
         _dirty = _rewrite is null || _dirty;
     }
@@ -150,17 +150,17 @@ internal sealed class StoreFile : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _rewrite = new FileStream(_path + ".tmp", FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.None);
-        _rewrite.Write(CreateHeader(_kind, _authenticator != null), 0, HeaderLength);
+        _rewrite.Write(CreateHeader(_kind, _signer.TagLength > 0), 0, HeaderLength);
     }
 
     public void CopyEntry(StoredEntry entry)
     {
         _rewrite!.Write(Contents, entry.Start, entry.Length);
 
-        if (_authenticator != null && !_contentsAuthenticated)
+        if (_signer.TagLength > 0 && !_contentsAuthenticated)
         {
-            Span<byte> tag = stackalloc byte[EntryAuthenticator.TagLength];
-            _authenticator.Compute(Contents.AsSpan(entry.PayloadStart - 1, entry.PayloadLength + 1), tag);
+            Span<byte> tag = stackalloc byte[_signer.TagLength];
+            _signer.Sign(Contents.AsSpan(entry.PayloadStart - 1, entry.PayloadLength + 1), tag);
             _rewrite.Write(tag);
         }
     }
@@ -196,10 +196,10 @@ internal sealed class StoreFile : IDisposable
         _disposed = true;
         _rewrite?.Dispose();
         _stream.Dispose();
-        _authenticator?.Dispose();
+        _signer.Dispose();
     }
 
-    private static int Parse(string path, byte[] contents, StoreKind kind, List<StoredEntry> entries, EntryAuthenticator? authenticator, out bool authenticated)
+    private static int Parse(string path, byte[] contents, StoreKind kind, List<StoredEntry> entries, IEntrySigner signer, out bool authenticated)
     {
         authenticated = false;
 
@@ -215,7 +215,7 @@ internal sealed class StoreFile : IDisposable
 
         authenticated = contents[4] == AuthenticatedVersion;
 
-        if (authenticated && authenticator == null)
+        if (authenticated && signer.TagLength == 0)
         {
             throw new InvalidOperationException($"'{path}' is protected, so the database must be opened with its key.");
         }
@@ -225,7 +225,7 @@ internal sealed class StoreFile : IDisposable
             throw new FormatException($"'{path}' stores a {(StoreKind)contents[5]}, not a {kind}.");
         }
 
-        var tagLength = authenticated ? EntryAuthenticator.TagLength : 0;
+        var tagLength = authenticated ? signer.TagLength : 0;
         var position = HeaderLength;
 
         while (contents.Length - position >= EntryPrefixLength + ChecksumLength + tagLength)
@@ -245,7 +245,7 @@ internal sealed class StoreFile : IDisposable
                 break;
             }
 
-            if (authenticated && !authenticator!.Verify(contents.AsSpan(position + 4, payloadLength + 1), contents.AsSpan(checksumStart + ChecksumLength, tagLength)))
+            if (authenticated && !signer.Verify(contents.AsSpan(position + 4, payloadLength + 1), contents.AsSpan(checksumStart + ChecksumLength, tagLength)))
             {
                 throw new DatabaseTamperedException($"'{path}' was modified outside the database.");
             }

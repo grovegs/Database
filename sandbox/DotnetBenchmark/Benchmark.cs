@@ -22,7 +22,7 @@ public class Benchmark
         _directory = Path.Combine(Path.GetTempPath(), "GroveGames.Database.Benchmark", Guid.NewGuid().ToString("N"));
         _database = new FileDatabase(_directory);
         _players = _database.GetDocumentCollection<int, Player>("players", player => player.Id);
-        _protectedDatabase = new FileDatabase(Path.Combine(_directory, "protected"), new byte[32]);
+        _protectedDatabase = new FileDatabase(Path.Combine(_directory, "protected"), DatabaseProtection.TamperCheck(new byte[32]));
         _protectedPlayers = _protectedDatabase.GetDocumentCollection<int, Player>("players", player => player.Id);
         _profile = _database.GetDocument<Player>("profile");
         _player = new Player { Id = 1, Name = "Hero", Level = 12, Gold = 4500, Experience = 0.5f };

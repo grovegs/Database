@@ -72,11 +72,13 @@ database.Save();
 
 ### Tamper Protection
 
-Open the database with a key to reject saves that were edited outside the game:
+Open the database with tamper protection to reject saves that were edited outside the game:
 
 ```csharp
-using var database = new FileDatabase(path, key);
+using var database = new FileDatabase(path, DatabaseProtection.TamperCheck(key));
 ```
+
+Without it, the database uses `DatabaseProtection.None`.
 
 - **What it does:** every entry gets an HMAC-SHA256 tag. Each file uses its own key derived from your key and the file's name, so an entry or a file copied from another store is rejected too. Data stays readable; this detects editing, it does not hide data.
 - **On a mismatch:** opening a document or collection throws `DatabaseTamperedException`, and the game decides what to do. A torn last write is still trimmed silently, as without a key.
@@ -111,6 +113,17 @@ If stored types have Unity members such as `Vector3` or `Color`, also install [`
 
 `Project Settings > GroveGames > Database` sets the folder name, `Database` by default. The database is stored in `Application.persistentDataPath` under that folder.
 
+### Tamper Protection in Unity
+
+Turn on **Tamper Protection** in `Project Settings > GroveGames > Database`, then register the key source in your root installer:
+
+```csharp
+builder.AddSingleton<IDatabaseKey, SecureStorageDatabaseKey>();
+builder.AddDatabase();
+```
+
+`IDatabaseKey.Value` returns the install's key, at least 16 bytes, for example a random key kept in the platform's secure storage. If protection is on and no `IDatabaseKey` is registered, `AddDatabase()` logs an error and opens the database without protection.
+
 ### Saving Automatically
 
 `DatabaseAutoSave` calls `Save()` whenever the app loses focus and when it quits. On iOS and Android the app loses focus as it goes to the background, so changes are synced before the OS can kill it:
@@ -130,7 +143,7 @@ With [GroveGames.DependencyInjection](https://github.com/grovegs/DependencyInjec
 builder.AddDatabase();
 ```
 
-If the container has an `IDatabaseKey`, the database is opened with its key. It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
+It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
 
 ## Godot
 
