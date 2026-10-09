@@ -8,7 +8,9 @@ namespace GroveGames.Database.Unity
     {
         public static IContainerBuilder AddDatabase(this IContainerBuilder builder)
         {
-            builder.AddSingleton<IDatabase>(_ => new FileDatabase(Path.Combine(Application.persistentDataPath, DatabaseSettings.GetOrCreate().FolderName)));
+            builder.AddSingleton<IDatabase>(resolver => new FileDatabase(
+                Path.Combine(Application.persistentDataPath, DatabaseSettings.GetOrCreate().FolderName),
+                resolver.TryResolve<IDatabaseKey>(out var key) ? key.Value : null));
             return builder.AddSingleton(resolver => new DatabaseAutoSaveEntryPoint(resolver.Resolve<IDatabase>()));
         }
     }

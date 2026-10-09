@@ -70,6 +70,19 @@ database.Save();
 
 `Save()` syncs every open file to storage and takes a few milliseconds, so call it at safe points such as pausing, quitting or after a purchase, not after every write.
 
+### Tamper Protection
+
+Open the database with a key to reject saves that were edited outside the game:
+
+```csharp
+using var database = new FileDatabase(path, key);
+```
+
+- **What it does:** every entry gets an HMAC-SHA256 tag. Each file uses its own key derived from your key and the file's name, so an entry or a file copied from another store is rejected too. Data stays readable; this detects editing, it does not hide data.
+- **On a mismatch:** opening a document or collection throws `DatabaseTamperedException`, and the game decides what to do. A torn last write is still trimmed silently, as without a key.
+- **Existing files:** a file written without a key is protected the first time it is opened with one. A protected file cannot be opened without its key.
+- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing.
+
 ### Storage
 
 Each document or collection is one file, `{name}.db`, in the database directory:
@@ -117,7 +130,7 @@ With [GroveGames.DependencyInjection](https://github.com/grovegs/DependencyInjec
 builder.AddDatabase();
 ```
 
-It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
+If the container has an `IDatabaseKey`, the database is opened with its key. It registers `IDatabase` and saves automatically for as long as the container lives, and disposing the container disposes the database.
 
 ## Godot
 

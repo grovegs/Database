@@ -12,10 +12,10 @@ public sealed class Document<T> : IDocument<T>, IStore
     private readonly MessagePackSerializer _serializer;
     private T _value;
 
-    internal Document(string path, MessagePackSerializer serializer)
+    internal Document(string path, MessagePackSerializer serializer, EntryAuthenticator? authenticator)
     {
         _serializer = serializer;
-        _file = StoreFile.Open(path, StoreKind.Document);
+        _file = StoreFile.Open(path, StoreKind.Document, authenticator);
 
         try
         {
