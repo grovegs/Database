@@ -30,7 +30,7 @@ namespace GroveGames.Database.Unity
 
         private void HandleFocusChanged(bool isFocused)
         {
-            if (!isFocused)
+            if (!_disposed && !isFocused)
             {
                 _database.Save();
             }
@@ -38,7 +38,10 @@ namespace GroveGames.Database.Unity
 
         private void HandleQuitting()
         {
-            _database.Save();
+            if (!_disposed)
+            {
+                _database.Save();
+            }
         }
     }
 }
