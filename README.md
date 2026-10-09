@@ -111,7 +111,7 @@ If stored types have Unity members such as `Vector3` or `Color`, also install [`
 
 ### Settings
 
-`Project Settings > GroveGames > Database` sets the folder name, `Database` by default. The database is stored in `Application.persistentDataPath` under that folder.
+`Project Settings > GroveGames > Database` sets the folder name, `Database` by default. The database is stored in `Application.persistentDataPath` under that folder. The settings are kept in `Assets/Settings/Resources/GroveGames/DatabaseSettings.asset` and loaded with `Resources.Load`, so every build profile ships them. Settings registered by older versions are moved there automatically.
 
 ### Tamper Protection in Unity
 

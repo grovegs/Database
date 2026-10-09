@@ -1,5 +1,4 @@
-﻿using UnityEditor;
-using UnityEditor.Build;
+﻿using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 
 namespace GroveGames.Database.Unity.Editor
@@ -10,10 +9,7 @@ namespace GroveGames.Database.Unity.Editor
 
         public void OnPreprocessBuild(BuildReport report)
         {
-            if (EditorBuildSettings.TryGetConfigObject<DatabaseSettings>(DatabaseSettings.GetConfigName(), out var settings) && settings != null)
-            {
-                DatabaseSettingsProvider.AddToPreloadedAssets(settings);
-            }
+            DatabaseSettingsAsset.Migrate();
         }
     }
 }
