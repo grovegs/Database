@@ -9,7 +9,7 @@ namespace GroveGames.Database.Unity
     {
         private const string ConfigName = "com.grovegames.database.settings";
 
-        private static DatabaseSettings s_loaded;
+        private static DatabaseSettings? s_loaded;
 
         [SerializeField] private string _folderName = "Database";
 

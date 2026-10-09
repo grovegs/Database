@@ -46,6 +46,28 @@ namespace GroveGames.Database.Unity.Editor.Tests
             Assert.That(database.Saves, Is.EqualTo(0));
         }
 
+        [Test]
+        public void DisposedDuringFocusLost_DoesNotSave()
+        {
+            var database = new CountingDatabase();
+            DatabaseAutoSave? autoSave = null;
+            Action<bool> disposeFirst = _ => autoSave?.Dispose();
+            Application.focusChanged += disposeFirst;
+            autoSave = new DatabaseAutoSave(database);
+
+            try
+            {
+                s_invokeFocusChanged.Invoke(null, new object[] { false });
+            }
+            finally
+            {
+                Application.focusChanged -= disposeFirst;
+                autoSave.Dispose();
+            }
+
+            Assert.That(database.Saves, Is.EqualTo(0));
+        }
+
         private sealed class CountingDatabase : IDatabase
         {
             public int Saves { get; private set; }
