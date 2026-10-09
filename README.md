@@ -124,6 +124,21 @@ builder.AddDatabase();
 
 `IDatabaseKey.Value` returns the install's key, at least 16 bytes, for example a random key kept in the platform's secure storage. If protection is on and no `IDatabaseKey` is registered, `AddDatabase()` logs an error and opens the database without protection.
 
+### Overriding Settings in Code
+
+`AddDatabase(configure)` starts from `DatabaseSettings` and lets code override it, for example per environment:
+
+```csharp
+builder.AddDatabase(ConfigureDatabase);
+
+private static void ConfigureDatabase(IDatabaseBuilder database)
+{
+    database.SetTamperProtection(ApplicationEnvironment.IsProduction);
+}
+```
+
+`SetFolderName` and `SetTamperProtection` override the matching settings. Build profiles can define a scripting symbol such as `DEVELOPMENT`, so each profile builds with its own values.
+
 ### Saving Automatically
 
 `DatabaseAutoSave` calls `Save()` whenever the app loses focus and when it quits. On iOS and Android the app loses focus as it goes to the background, so changes are synced before the OS can kill it:
