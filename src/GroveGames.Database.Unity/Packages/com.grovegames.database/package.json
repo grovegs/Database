@@ -1,6 +1,6 @@
 {
   "name": "com.grovegames.database",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "displayName": "GroveGames.Database",
   "description": "Fast, crash-safe local document database for games on .NET, Unity and Godot",
   "unity": "2021.3",

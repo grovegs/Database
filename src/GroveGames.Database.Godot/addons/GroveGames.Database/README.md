@@ -70,6 +70,21 @@ database.Save();
 
 `Save()` syncs every open file to storage and takes a few milliseconds, so call it at safe points such as pausing, quitting or after a purchase, not after every write.
 
+### Tamper Protection
+
+Open the database with tamper protection to reject saves that were edited outside the game:
+
+```csharp
+using var database = new FileDatabase(path, DatabaseProtection.TamperCheck(key));
+```
+
+Without it, the database uses `DatabaseProtection.None`.
+
+- **What it does:** every entry gets an HMAC-SHA256 tag. Each file uses its own key derived from your key and the file's name, so an entry or a file copied from another store is rejected too. Data stays readable; this detects editing, it does not hide data.
+- **On a mismatch:** opening a document or collection throws `DatabaseTamperedException`, and the game decides what to do. A torn last write is still trimmed silently, as without a key.
+- **Existing files:** a file written without a key is protected the first time it is opened with one. A protected file cannot be opened without its key.
+- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing.
+
 ### Storage
 
 Each document or collection is one file, `{name}.db`, in the database directory:
@@ -96,7 +111,33 @@ If stored types have Unity members such as `Vector3` or `Color`, also install [`
 
 ### Settings
 
-`Project Settings > GroveGames > Database` sets the folder name, `Database` by default. The database is stored in `Application.persistentDataPath` under that folder.
+`Project Settings > GroveGames > Database` sets the folder name, `Database` by default. The database is stored in `Application.persistentDataPath` under that folder. The settings are kept in `Assets/Settings/Resources/GroveGames/DatabaseSettings.asset` and loaded with `Resources.Load`, so every build profile ships them.
+
+### Tamper Protection in Unity
+
+Turn on **Tamper Protection** in `Project Settings > GroveGames > Database`, then register the key source in your root installer:
+
+```csharp
+builder.AddSingleton<IDatabaseKey, SecureStorageDatabaseKey>();
+builder.AddDatabase();
+```
+
+`IDatabaseKey.Value` returns the install's key, at least 16 bytes, for example a random key kept in the platform's secure storage. If protection is on and no `IDatabaseKey` is registered, `AddDatabase()` logs an error and opens the database without protection.
+
+### Overriding Settings in Code
+
+`AddDatabase(configure)` starts from `DatabaseSettings` and lets code override it, for example per environment:
+
+```csharp
+builder.AddDatabase(ConfigureDatabase);
+
+private static void ConfigureDatabase(IDatabaseBuilder database)
+{
+    database.SetTamperProtection(ApplicationEnvironment.IsProduction);
+}
+```
+
+`SetFolderName` and `SetTamperProtection` override the matching settings. Build profiles can define a scripting symbol such as `DEVELOPMENT`, so each profile builds with its own values.
 
 ### Saving Automatically
 
