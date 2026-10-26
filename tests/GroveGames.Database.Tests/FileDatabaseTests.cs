@@ -93,6 +93,67 @@ public sealed class FileDatabaseTests : IDisposable
         Assert.Throws<ObjectDisposedException>(() => database.GetDocument<DatabaseItem>("items"));
     }
 
+    [Fact]
+    public void OpenStoreNames_AfterOpeningStores_ListsEachName()
+    {
+        using var database = Open();
+        database.GetDocument<DatabaseItem>("profile");
+        database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+
+        var names = database.OpenStoreNames;
+
+        Assert.Equal(2, names.Count);
+        Assert.Contains("profile", names);
+        Assert.Contains("items", names);
+    }
+
+    [Fact]
+    public void TryInspect_Document_ReturnsCurrentValue()
+    {
+        using var database = Open();
+        var item = new DatabaseItem { Id = 3 };
+        database.GetDocument<DatabaseItem>("profile").Set(item);
+
+        var found = database.TryInspect("profile", out var value);
+
+        Assert.True(found);
+        Assert.Same(item, value);
+    }
+
+    [Fact]
+    public void TryInspect_Collection_ReturnsItems()
+    {
+        using var database = Open();
+        var collection = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+        collection.Upsert(new DatabaseItem { Id = 1 });
+        collection.Upsert(new DatabaseItem { Id = 2 });
+
+        var found = database.TryInspect("items", out var value);
+
+        Assert.True(found);
+        var items = Assert.IsAssignableFrom<IEnumerable<DatabaseItem>>(value);
+        Assert.Equal(2, items.Count());
+    }
+
+    [Fact]
+    public void TryInspect_UnopenedName_ReturnsFalse()
+    {
+        using var database = Open();
+
+        var found = database.TryInspect("missing", out var value);
+
+        Assert.False(found);
+        Assert.Null(value);
+    }
+
+    [Fact]
+    public void Directory_ReturnsConstructorDirectory()
+    {
+        using var database = Open();
+
+        Assert.Equal(_directory, database.Directory);
+    }
+
     private FileDatabase Open()
     {
         return new FileDatabase(_directory);

@@ -103,6 +103,11 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         return GetEnumerator();
     }
 
+    object? IStore.Inspect()
+    {
+        return _items.Values;
+    }
+
     void IStore.Sync()
     {
         _file.Sync();

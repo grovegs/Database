@@ -38,6 +38,11 @@ public sealed class Document<T> : IDocument<T>, IStore
         _value = value;
     }
 
+    object? IStore.Inspect()
+    {
+        return _value;
+    }
+
     void IStore.Sync()
     {
         _file.Sync();
