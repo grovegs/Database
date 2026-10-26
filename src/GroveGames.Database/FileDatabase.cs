@@ -3,7 +3,7 @@ using GroveGames.Serialization;
 
 namespace GroveGames.Database;
 
-public sealed class FileDatabase : IDatabase
+public sealed class FileDatabase : IDatabase, IDatabaseInspector
 {
     private const string Extension = ".db";
 
@@ -23,9 +23,9 @@ public sealed class FileDatabase : IDatabase
         ArgumentException.ThrowIfNullOrEmpty(directory);
         ArgumentNullException.ThrowIfNull(protection);
 
-        if (!Directory.Exists(directory))
+        if (!System.IO.Directory.Exists(directory))
         {
-            Directory.CreateDirectory(directory);
+            System.IO.Directory.CreateDirectory(directory);
             var parent = Path.GetDirectoryName(Path.GetFullPath(directory));
 
             if (parent is not null)
@@ -41,6 +41,9 @@ public sealed class FileDatabase : IDatabase
         _disposed = false;
     }
 
+    public string Directory => _directory;
+    public IReadOnlyCollection<string> OpenStoreNames => _stores.Keys;
+
     public IDocument<T> GetDocument<T>(string name) where T : new()
     {
         return GetStore(name, (path, signer) => new Document<T>(path, _serializer, signer));
@@ -50,6 +53,20 @@ public sealed class FileDatabase : IDatabase
     {
         ArgumentNullException.ThrowIfNull(keySelector);
         return GetStore(name, (path, signer) => new DocumentCollection<TKey, T>(path, _serializer, keySelector, signer));
+    }
+
+    public bool TryInspect(string name, out object? value)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (_stores.TryGetValue(name, out var store))
+        {
+            value = ((IStore)store).Inspect();
+            return true;
+        }
+
+        value = null;
+        return false;
     }
 
     public void Save()

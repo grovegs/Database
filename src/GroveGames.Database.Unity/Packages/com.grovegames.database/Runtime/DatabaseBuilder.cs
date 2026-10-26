@@ -43,6 +43,7 @@ namespace GroveGames.Database.Unity
 
         public IDatabase Build()
         {
+            DatabaseReset.Apply(Directory);
             var protection = _tamperProtection
                 ? DatabaseKeyStore.CreateProtection(new global::GroveGames.SecureStorage.Unity.SecureStorage())
                 : DatabaseProtection.None;
