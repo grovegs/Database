@@ -2,7 +2,9 @@
     "name": "GroveGames.Database.Unity.DependencyInjection",
     "rootNamespace": "GroveGames.Database.Unity",
     "references": [
-        "GroveGames.Database.Unity"
+        "GroveGames.Database.Unity",
+        "GUID:9d8d0fb5d2ded4239927aac80a0cd26c",
+        "GUID:6c306e23946f7466c9187a4387a5baca"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

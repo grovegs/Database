@@ -1,5 +1,8 @@
 using System;
 using GroveGames.DependencyInjection;
+#if GROVEGAMES_DEVELOPERTOOLS
+using GroveGames.DeveloperTools.Unity;
+#endif
 
 namespace GroveGames.Database.Unity
 {
@@ -18,6 +21,9 @@ namespace GroveGames.Database.Unity
                 configure(databaseBuilder);
                 return databaseBuilder.Build();
             });
+#if GROVEGAMES_DEVELOPERTOOLS
+            builder.AddDeveloperToolsPage<DatabasePage>();
+#endif
             return builder.AddSingleton(resolver => new DatabaseAutoSaveEntryPoint(resolver.Resolve<IDatabase>()));
         }
     }
