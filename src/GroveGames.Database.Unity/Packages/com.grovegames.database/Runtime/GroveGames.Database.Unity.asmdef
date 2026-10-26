@@ -10,7 +10,8 @@
     "overrideReferences": true,
     "precompiledReferences": [
         "GroveGames.Database.dll",
-        "GroveGames.Serialization.dll"
+        "GroveGames.Serialization.dll",
+        "GroveGames.SecureStorage.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [],
