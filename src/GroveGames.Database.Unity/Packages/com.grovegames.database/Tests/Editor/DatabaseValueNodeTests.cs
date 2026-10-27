@@ -160,6 +160,42 @@ namespace GroveGames.Database.Unity.Editor.Tests
             Assert.That(value, Is.EqualTo(TestMode.Second));
         }
 
+        [Test]
+        public void TrySetText_ParsableStruct_ShowsAndParsesText()
+        {
+            var record = new TestAmountRecord { Amount = new TestAmount(14, "a") };
+            var node = CreateRoot(record);
+            var amount = node.Children[0];
+
+            var isSet = amount.TrySetText("3b");
+
+            Assert.That(amount.Kind, Is.EqualTo(DatabaseValueKind.Text));
+            Assert.That(isSet, Is.True);
+            Assert.That(record.Amount.ToString(), Is.EqualTo("3b"));
+        }
+
+        [Test]
+        public void Text_ParsableStruct_UsesToString()
+        {
+            var node = CreateRoot(new TestAmountRecord { Amount = new TestAmount(14, "a") });
+
+            var text = node.Children[0].Text;
+
+            Assert.That(text, Is.EqualTo("14a"));
+        }
+
+        [Test]
+        public void TrySetText_InvalidParsableText_ReturnsFalse()
+        {
+            var record = new TestAmountRecord { Amount = new TestAmount(14, "a") };
+            var node = CreateRoot(record);
+
+            var isSet = node.Children[0].TrySetText("abc");
+
+            Assert.That(isSet, Is.False);
+            Assert.That(record.Amount.ToString(), Is.EqualTo("14a"));
+        }
+
         private static DatabaseValueNode CreateRoot(object value)
         {
             return DatabaseValueNode.CreateRoot("record", "record", value, _ => { });
@@ -175,6 +211,47 @@ namespace GroveGames.Database.Unity.Editor.Tests
         {
             public float X;
             public float Y;
+        }
+
+        private readonly struct TestAmount
+        {
+            public TestAmount(int value, string suffix)
+            {
+                Value = value;
+                Suffix = suffix;
+            }
+
+            public int Value { get; }
+            public string Suffix { get; }
+
+            public static bool TryParse(string text, out TestAmount amount)
+            {
+                var digits = 0;
+
+                while (digits < text.Length && char.IsDigit(text[digits]))
+                {
+                    digits++;
+                }
+
+                if (digits == 0 || !int.TryParse(text.Substring(0, digits), out var value))
+                {
+                    amount = default;
+                    return false;
+                }
+
+                amount = new TestAmount(value, text.Substring(digits));
+                return true;
+            }
+
+            public override string ToString()
+            {
+                return Value + Suffix;
+            }
+        }
+
+        private sealed class TestAmountRecord
+        {
+            public TestAmount Amount;
         }
 
         private sealed class TestRecord

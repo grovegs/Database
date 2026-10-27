@@ -49,6 +49,31 @@ namespace GroveGames.Database.Unity.Editor.Tests
             Assert.That(text, Is.EqualTo("1.5"));
         }
 
+        [Test]
+        public void Format_ParsableValue_UsesToString()
+        {
+            var text = DatabaseValueFormatter.Format(new TestAmount());
+
+            Assert.That(text, Is.EqualTo("14a"));
+        }
+
+        private readonly struct TestAmount
+        {
+            public double Mantissa => 1.4d;
+            public long Exponent => 1L;
+
+            public static bool TryParse(string text, out TestAmount amount)
+            {
+                amount = default;
+                return text == "14a";
+            }
+
+            public override string ToString()
+            {
+                return "14a";
+            }
+        }
+
         private sealed class TestRecord
         {
             public int Id;

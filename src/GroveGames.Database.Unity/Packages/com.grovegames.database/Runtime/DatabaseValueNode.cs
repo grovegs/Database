@@ -13,6 +13,9 @@ namespace GroveGames.Database.Unity
         private const int MaxItems = 200;
         private const string NullText = "null";
         private const string DateTimeFormat = "O";
+        private const string TryParseName = "TryParse";
+
+        private static readonly Dictionary<Type, MethodInfo?> s_tryParseMethods = new();
 
         private readonly DatabaseValueNode? _parent;
         private readonly Action<object?>? _assign;
@@ -205,6 +208,12 @@ namespace GroveGames.Database.Unity
                     {
                         parsed = DateTimeOffset.TryParse(text, culture, DateTimeStyles.RoundtripKind, out var dateTimeOffset);
                         value = dateTimeOffset;
+                    }
+                    else if (GetTryParse(type) is { } tryParse)
+                    {
+                        var arguments = new object?[] { text, null };
+                        parsed = (bool)tryParse.Invoke(null, arguments)!;
+                        value = arguments[1];
                     }
                     else
                     {
@@ -410,7 +419,34 @@ namespace GroveGames.Database.Unity
                 || type == typeof(Guid)
                 || type == typeof(DateTime)
                 || type == typeof(DateTimeOffset)
-                || type == typeof(TimeSpan);
+                || type == typeof(TimeSpan)
+                || GetTryParse(type) != null;
+        }
+
+        internal static bool IsParsable(Type type)
+        {
+            return GetTryParse(type) != null;
+        }
+
+        private static MethodInfo? GetTryParse(Type type)
+        {
+            lock (s_tryParseMethods)
+            {
+                if (s_tryParseMethods.TryGetValue(type, out var cached))
+                {
+                    return cached;
+                }
+
+                var method = type.GetMethod(TryParseName, BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string), type.MakeByRefType() }, null);
+
+                if (method != null && method.ReturnType != typeof(bool))
+                {
+                    method = null;
+                }
+
+                s_tryParseMethods.Add(type, method);
+                return method;
+            }
         }
 
         private static bool CanBeNull(Type type)
