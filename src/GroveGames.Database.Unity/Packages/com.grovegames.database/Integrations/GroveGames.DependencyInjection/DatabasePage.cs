@@ -12,6 +12,8 @@ namespace GroveGames.Database.Unity
 {
     public sealed class DatabasePage : IDeveloperToolsPage
     {
+        public const int PageOrder = 200;
+
         private const string StoreExtension = ".db";
         private const string StorePattern = "*.db";
         private const string TimeFormat = "yyyy-MM-dd HH:mm:ss";
