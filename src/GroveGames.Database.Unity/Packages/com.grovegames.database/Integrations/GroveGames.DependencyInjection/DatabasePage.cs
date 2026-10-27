@@ -53,7 +53,7 @@ namespace GroveGames.Database.Unity
             Root.style.flexShrink = 1f;
             Root.style.minHeight = 0f;
 
-            _path = CreateMutedLabel();
+            _path = CreateMutedLabel(string.Empty);
             _path.style.marginBottom = DeveloperToolsStyle.Spacing;
             Root.Add(_path);
 
@@ -75,7 +75,7 @@ namespace GroveGames.Database.Unity
             DeveloperToolsStyle.ApplyBold(_status, _boldFont);
             Root.Add(_status);
 
-            _empty = CreateMutedLabel();
+            _empty = CreateMutedLabel(string.Empty);
             _empty.style.marginTop = DeveloperToolsStyle.LargeSpacing;
             Root.Add(_empty);
 
@@ -201,7 +201,7 @@ namespace GroveGames.Database.Unity
             header.Add(title);
             card.Add(header);
 
-            var details = CreateMutedLabel();
+            var details = CreateMutedLabel(string.Empty);
             details.text = DescribeFile(Path.Combine(directory, name + StoreExtension), isOpen);
             details.style.marginBottom = DeveloperToolsStyle.Spacing;
             card.Add(details);
@@ -350,9 +350,9 @@ namespace GroveGames.Database.Unity
             }
         }
 
-        private static Label CreateMutedLabel()
+        private static Label CreateMutedLabel(string text)
         {
-            var label = new Label();
+            var label = new Label(text);
             label.style.fontSize = DeveloperToolsStyle.FontSize;
             label.style.color = DeveloperToolsStyle.MutedTextColor;
             label.style.whiteSpace = WhiteSpace.Normal;
