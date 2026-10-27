@@ -1,6 +1,7 @@
 using System;
 using GroveGames.DependencyInjection;
 #if GROVEGAMES_DEVELOPERTOOLS
+using GroveGames.Database.Unity.DeveloperTools;
 using GroveGames.DeveloperTools.Unity;
 #endif
 
