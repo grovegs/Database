@@ -5,7 +5,7 @@ using GroveGames.DeveloperTools.Unity;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace GroveGames.Database.Unity
+namespace GroveGames.Database.Unity.DeveloperTools
 {
     public sealed class DatabaseValueView
     {
