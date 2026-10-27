@@ -147,6 +147,90 @@ public sealed class FileDatabaseTests : IDisposable
     }
 
     [Fact]
+    public void IsCollection_Collection_ReturnsTrue()
+    {
+        using var database = Open();
+        database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+
+        var isCollection = database.IsCollection("items");
+
+        Assert.True(isCollection);
+    }
+
+    [Fact]
+    public void IsCollection_Document_ReturnsFalse()
+    {
+        using var database = Open();
+        database.GetDocument<DatabaseItem>("profile");
+
+        var isCollection = database.IsCollection("profile");
+
+        Assert.False(isCollection);
+    }
+
+    [Fact]
+    public void TryWrite_Document_PersistsValue()
+    {
+        using (var database = Open())
+        {
+            database.GetDocument<DatabaseItem>("profile");
+
+            var written = database.TryWrite("profile", new DatabaseItem { Id = 7 });
+
+            Assert.True(written);
+        }
+
+        using var reopened = Open();
+        Assert.Equal(7, reopened.GetDocument<DatabaseItem>("profile").Value.Id);
+    }
+
+    [Fact]
+    public void TryWrite_CollectionItem_UpsertsItem()
+    {
+        using var database = Open();
+        var collection = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+
+        database.TryWrite("items", new DatabaseItem { Id = 4 });
+
+        Assert.True(collection.Contains(4));
+    }
+
+    [Fact]
+    public void TryWrite_CollectionItemWithChangedKey_RemovesOldKey()
+    {
+        using var database = Open();
+        var collection = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+        var item = new DatabaseItem { Id = 1 };
+        collection.Upsert(item);
+        item.Id = 2;
+
+        database.TryWrite("items", item);
+
+        Assert.False(collection.Contains(1));
+        Assert.Same(item, collection.Get(2));
+        Assert.Single(collection);
+    }
+
+    [Fact]
+    public void TryWrite_WrongType_Throws()
+    {
+        using var database = Open();
+        database.GetDocument<DatabaseItem>("profile");
+
+        Assert.Throws<ArgumentException>(() => database.TryWrite("profile", "text"));
+    }
+
+    [Fact]
+    public void TryWrite_UnopenedName_ReturnsFalse()
+    {
+        using var database = Open();
+
+        var written = database.TryWrite("missing", new DatabaseItem());
+
+        Assert.False(written);
+    }
+
+    [Fact]
     public void Directory_ReturnsConstructorDirectory()
     {
         using var database = Open();

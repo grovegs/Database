@@ -30,6 +30,8 @@ public sealed class Document<T> : IDocument<T>, IStore
 
     public T Value => _value;
 
+    bool IStore.IsCollection => false;
+
     public void Set(T value)
     {
         var payload = _file.BeginEntry(EntryKind.Value);
@@ -41,6 +43,16 @@ public sealed class Document<T> : IDocument<T>, IStore
     object? IStore.Inspect()
     {
         return _value;
+    }
+
+    void IStore.Write(object value)
+    {
+        if (value is not T typed)
+        {
+            throw new ArgumentException($"The value must be a {typeof(T).Name}.", nameof(value));
+        }
+
+        Set(typed);
     }
 
     void IStore.Sync()

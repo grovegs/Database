@@ -37,6 +37,8 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
 
     public int Count => _items.Count;
 
+    bool IStore.IsCollection => true;
+
     public bool Contains(TKey key)
     {
         return _items.ContainsKey(key);
@@ -106,6 +108,27 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
     object? IStore.Inspect()
     {
         return _items.Values;
+    }
+
+    void IStore.Write(object value)
+    {
+        if (value is not T typed)
+        {
+            throw new ArgumentException($"The value must be a {typeof(T).Name}.", nameof(value));
+        }
+
+        var key = _keySelector(typed);
+
+        foreach (var pair in _items)
+        {
+            if (ReferenceEquals(pair.Value, value) && !EqualityComparer<TKey>.Default.Equals(pair.Key, key))
+            {
+                Remove(pair.Key);
+                break;
+            }
+        }
+
+        Upsert(typed);
     }
 
     void IStore.Sync()

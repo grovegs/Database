@@ -40,6 +40,12 @@ namespace GroveGames.Database.Unity
                     return;
             }
 
+            if (DatabaseValueNode.IsParsable(value.GetType()))
+            {
+                builder.Append(value);
+                return;
+            }
+
             if (depth >= MaxDepth)
             {
                 builder.Append("...");

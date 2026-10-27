@@ -22,7 +22,7 @@ namespace GroveGames.Database.Unity
                 return databaseBuilder.Build();
             });
 #if GROVEGAMES_DEVELOPERTOOLS
-            builder.AddDeveloperToolsPage<DatabasePage>();
+            builder.AddDeveloperToolsPage<DatabasePage>(DatabasePage.PageOrder);
 #endif
             return builder.AddSingleton(resolver => new DatabaseAutoSaveEntryPoint(resolver.Resolve<IDatabase>()));
         }
