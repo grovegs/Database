@@ -208,7 +208,7 @@ public sealed class FileDatabaseTests : IDisposable
 
         Assert.False(collection.Contains(1));
         Assert.Same(item, collection.Get(2));
-        Assert.Equal(1, collection.Count);
+        Assert.Single(collection);
     }
 
     [Fact]
