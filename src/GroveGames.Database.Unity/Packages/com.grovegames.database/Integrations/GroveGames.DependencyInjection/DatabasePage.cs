@@ -1,5 +1,6 @@
 #if GROVEGAMES_DEVELOPERTOOLS
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -19,12 +20,14 @@ namespace GroveGames.Database.Unity
         private const string NotInspectableText = "This database does not support inspection.";
         private const string EmptyText = "No stores yet.";
         private const string NotLoadedText = "Not loaded in this session.";
+        private const string EmptyCollectionText = "No items.";
 
         private readonly IDatabaseInspector? _inspector;
         private readonly Font? _boldFont;
         private readonly List<string> _names;
         private readonly List<string> _scheduled;
         private readonly HashSet<string> _expanded;
+        private readonly DatabaseValueView _valueView;
         private readonly Label _path;
         private readonly Button _resetAll;
         private readonly Label _status;
@@ -41,6 +44,7 @@ namespace GroveGames.Database.Unity
             _names = new List<string>();
             _scheduled = new List<string>();
             _expanded = new HashSet<string>(StringComparer.Ordinal);
+            _valueView = new DatabaseValueView(_expanded, _boldFont);
 
             Root = new VisualElement();
             Root.style.flexGrow = 1f;
@@ -214,30 +218,65 @@ namespace GroveGames.Database.Unity
                 return card;
             }
 
-            var text = isOpen ? DatabaseValueFormatter.Format(value) : NotLoadedText;
-            var field = new TextField { multiline = true, isReadOnly = true, value = text };
-            DeveloperToolsStyle.StyleInput(field);
-            var input = field.Q(className: TextField.inputUssClassName);
-
-            if (input != null)
+            if (!isOpen)
             {
-                input.style.fontSize = DeveloperToolsStyle.FontSize;
-                input.style.whiteSpace = WhiteSpace.Normal;
-                input.style.paddingTop = DeveloperToolsStyle.Spacing;
-                input.style.paddingBottom = DeveloperToolsStyle.Spacing;
+                card.Add(CreateMutedLabel(NotLoadedText));
+                return card;
             }
 
-            card.Add(field);
-
-            if (isOpen)
+            if (_inspector!.IsCollection(name) && value is IEnumerable items)
             {
-                var copy = DeveloperToolsStyle.CreateButton("Copy", () => GUIUtility.systemCopyBuffer = text);
-                copy.style.marginTop = DeveloperToolsStyle.Spacing;
-                copy.style.alignSelf = Align.FlexStart;
-                card.Add(copy);
+                var index = 0;
+
+                foreach (var item in items)
+                {
+                    var label = "[" + index.ToString(CultureInfo.InvariantCulture) + "]";
+                    var node = DatabaseValueNode.CreateRoot(label, name + "/" + label, item, changed => Write(name, changed));
+                    card.Add(_valueView.Create(node));
+                    index++;
+                }
+
+                if (index == 0)
+                {
+                    card.Add(CreateMutedLabel(EmptyCollectionText));
+                }
+            }
+            else
+            {
+                var node = DatabaseValueNode.CreateRoot(name, name, value, changed => Write(name, changed));
+                card.Add(_valueView.CreateContents(node));
             }
 
+            var copy = DeveloperToolsStyle.CreateButton("Copy", () => Copy(name));
+            copy.style.marginTop = DeveloperToolsStyle.Spacing;
+            copy.style.alignSelf = Align.FlexStart;
+            card.Add(copy);
             return card;
+        }
+
+        private void Write(string name, object? value)
+        {
+            if (value == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _inspector!.TryWrite(name, value);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"Failed to write the database store '{name}': {exception.Message}");
+            }
+        }
+
+        private void Copy(string name)
+        {
+            if (_inspector!.TryInspect(name, out var value))
+            {
+                GUIUtility.systemCopyBuffer = DatabaseValueFormatter.Format(value);
+            }
         }
 
         private void ToggleExpanded(string name)

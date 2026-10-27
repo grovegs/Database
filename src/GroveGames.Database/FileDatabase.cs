@@ -55,6 +55,12 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         return GetStore(name, (path, signer) => new DocumentCollection<TKey, T>(path, _serializer, keySelector, signer));
     }
 
+    public bool IsCollection(string name)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _stores.TryGetValue(name, out var store) && ((IStore)store).IsCollection;
+    }
+
     public bool TryInspect(string name, out object? value)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -67,6 +73,20 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         value = null;
         return false;
+    }
+
+    public bool TryWrite(string name, object value)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (!_stores.TryGetValue(name, out var store))
+        {
+            return false;
+        }
+
+        ((IStore)store).Write(value);
+        return true;
     }
 
     public void Save()
