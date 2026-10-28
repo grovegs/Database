@@ -14,10 +14,11 @@ internal sealed class HmacEntrySigner : IEntrySigner
 #else
     private readonly HMACSHA256 _hmac;
 #endif
+    private readonly bool _trustsExistingTags;
 
     public HmacEntrySigner(byte[] key, string name, bool trustsExistingTags)
     {
-        TrustsExistingTags = trustsExistingTags;
+        _trustsExistingTags = trustsExistingTags;
         using var derivation = new HMACSHA256(key);
         var fileKey = derivation.ComputeHash(Encoding.UTF8.GetBytes(name));
 #if NET6_0_OR_GREATER
@@ -29,7 +30,7 @@ internal sealed class HmacEntrySigner : IEntrySigner
 
     public int TagLength => Length;
 
-    public bool TrustsExistingTags { get; }
+    public bool TrustsExistingTags => _trustsExistingTags;
 
     public void Sign(ReadOnlySpan<byte> data, Span<byte> tag)
     {
