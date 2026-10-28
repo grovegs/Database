@@ -35,9 +35,10 @@ namespace GroveGames.Database.Unity.DeveloperTools
         private readonly Label _status;
         private readonly Label _empty;
         private readonly ScrollView _list;
+        private readonly VisualElement _root;
 
         public string Title => "Database";
-        public VisualElement Root { get; }
+        public VisualElement Root => _root;
 
         public DatabasePage(IDatabase database, DeveloperToolsSettings settings)
         {
@@ -48,7 +49,7 @@ namespace GroveGames.Database.Unity.DeveloperTools
             _expanded = new HashSet<string>(StringComparer.Ordinal);
             _valueView = new DatabaseValueView(_expanded, _boldFont);
 
-            Root = new VisualElement();
+            _root = new VisualElement();
             Root.style.flexGrow = 1f;
             Root.style.flexShrink = 1f;
             Root.style.minHeight = 0f;

@@ -70,7 +70,9 @@ namespace GroveGames.Database.Unity.Editor.Tests
 
         private sealed class CountingDatabase : IDatabase
         {
-            public int Saves { get; private set; }
+            private int _saves;
+
+            public int Saves => _saves;
 
             public IDocument<T> GetDocument<T>(string name) where T : new()
             {
@@ -84,7 +86,7 @@ namespace GroveGames.Database.Unity.Editor.Tests
 
             public void Save()
             {
-                Saves++;
+                _saves++;
             }
 
             public void Dispose()

@@ -25,6 +25,8 @@ internal sealed class StoreFile : IDisposable
     private FileStream? _rewrite;
     private bool _dirty;
     private bool _disposed;
+    private byte[] _contents;
+    private List<StoredEntry> _entries;
 
     private StoreFile(string path, StoreKind kind, FileStream stream, byte[] contents, List<StoredEntry> entries, IEntrySigner signer, bool contentsAuthenticated)
     {
@@ -40,13 +42,13 @@ internal sealed class StoreFile : IDisposable
         _rewrite = null;
         _dirty = false;
         _disposed = false;
-        Contents = contents;
-        Entries = entries;
+        _contents = contents;
+        _entries = entries;
     }
 
-    public byte[] Contents { get; private set; }
+    public byte[] Contents => _contents;
 
-    public List<StoredEntry> Entries { get; private set; }
+    public List<StoredEntry> Entries => _entries;
 
     public static StoreFile Open(string path, StoreKind kind, IEntrySigner signer)
     {
@@ -185,8 +187,8 @@ internal sealed class StoreFile : IDisposable
 
     public void ReleaseContents()
     {
-        Contents = [];
-        Entries = [];
+        _contents = [];
+        _entries = [];
     }
 
     public void Dispose()

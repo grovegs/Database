@@ -22,13 +22,19 @@ namespace GroveGames.Database.Unity
         private readonly Type _declaredType;
         private List<DatabaseValueNode>? _children;
         private bool _isTruncated;
+        private readonly string _label;
+        private readonly string _path;
+        private object? _value;
+        private DatabaseValueKind _kind;
+        private Type _valueType;
+        private readonly bool _isEditable;
 
-        public string Label { get; }
-        public string Path { get; }
-        public object? Value { get; private set; }
-        public DatabaseValueKind Kind { get; private set; }
-        public Type ValueType { get; private set; }
-        public bool IsEditable { get; }
+        public string Label => _label;
+        public string Path => _path;
+        public object? Value => _value;
+        public DatabaseValueKind Kind => _kind;
+        public Type ValueType => _valueType;
+        public bool IsEditable => _isEditable;
 
         public bool IsTruncated
         {
@@ -57,11 +63,11 @@ namespace GroveGames.Database.Unity
             _parent = parent;
             _assign = assign;
             _declaredType = declaredType;
-            Label = label;
-            Path = path;
-            IsEditable = isEditable;
-            Value = value;
-            ValueType = typeof(object);
+            _label = label;
+            _path = path;
+            _isEditable = isEditable;
+            _value = value;
+            _valueType = typeof(object);
             Classify();
         }
 
@@ -82,7 +88,7 @@ namespace GroveGames.Database.Unity
                 return false;
             }
 
-            Value = value;
+            _value = value;
             _assign?.Invoke(value);
             _parent?.HandleChildChanged();
             return true;
@@ -265,20 +271,20 @@ namespace GroveGames.Database.Unity
 
             if (IsScalar(scalarType))
             {
-                ValueType = Nullable.GetUnderlyingType(_declaredType) != null ? _declaredType : scalarType;
-                Kind = scalarType == typeof(bool) ? DatabaseValueKind.Toggle : scalarType.IsEnum ? DatabaseValueKind.Enum : DatabaseValueKind.Text;
+                _valueType = Nullable.GetUnderlyingType(_declaredType) != null ? _declaredType : scalarType;
+                _kind = scalarType == typeof(bool) ? DatabaseValueKind.Toggle : scalarType.IsEnum ? DatabaseValueKind.Enum : DatabaseValueKind.Text;
                 return;
             }
 
-            ValueType = type;
+            _valueType = type;
 
             if (Value == null)
             {
-                Kind = DatabaseValueKind.Null;
+                _kind = DatabaseValueKind.Null;
                 return;
             }
 
-            Kind = Value is IEnumerable ? DatabaseValueKind.List : DatabaseValueKind.Object;
+            _kind = Value is IEnumerable ? DatabaseValueKind.List : DatabaseValueKind.Object;
         }
 
         private void EnsureChildren()

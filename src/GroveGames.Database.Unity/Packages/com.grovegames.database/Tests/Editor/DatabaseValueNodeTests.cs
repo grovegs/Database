@@ -215,14 +215,17 @@ namespace GroveGames.Database.Unity.Editor.Tests
 
         private readonly struct TestAmount
         {
+            private readonly int _value;
+            private readonly string _suffix;
+
             public TestAmount(int value, string suffix)
             {
-                Value = value;
-                Suffix = suffix;
+                _value = value;
+                _suffix = suffix;
             }
 
-            public int Value { get; }
-            public string Suffix { get; }
+            public int Value => _value;
+            public string Suffix => _suffix;
 
             public static bool TryParse(string text, out TestAmount amount)
             {
@@ -256,6 +259,8 @@ namespace GroveGames.Database.Unity.Editor.Tests
 
         private sealed class TestRecord
         {
+            private readonly string _title;
+
             public int Id;
             public bool Enabled;
             public TestPosition Position;
@@ -266,8 +271,13 @@ namespace GroveGames.Database.Unity.Editor.Tests
             [Ignore]
             public int Hidden;
 
-            public string Title { get; } = "Record";
+            public string Title => _title;
             public int Doubled => Id * 2;
+
+            public TestRecord()
+            {
+                _title = "Record";
+            }
         }
     }
 }
