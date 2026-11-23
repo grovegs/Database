@@ -122,7 +122,7 @@ The key never leaves the device, but the app's files move to a new device when a
 
 ### Overriding Settings in Code
 
-`AddDatabase(configure)` starts from `DatabaseSettings` and lets code override it, for example per environment:
+`AddDatabase(configure)` starts from `UnityDatabaseSettings` and lets code override it, for example per environment:
 
 ```csharp
 builder.AddDatabase(ConfigureDatabase);
@@ -140,7 +140,7 @@ private static void ConfigureDatabase(IDatabaseBuilder database)
 `DatabaseAutoSave` calls `Save()` whenever the app loses focus and when it quits. On iOS and Android the app loses focus as it goes to the background, so changes are synced before the OS can kill it:
 
 ```csharp
-var database = new FileDatabase(Path.Combine(Application.persistentDataPath, DatabaseSettings.GetOrCreate().FolderName));
+var database = new FileDatabase(Path.Combine(Application.persistentDataPath, UnityDatabaseSettings.GetOrCreate().FolderName));
 var autoSave = new DatabaseAutoSave(database);
 ```
 
