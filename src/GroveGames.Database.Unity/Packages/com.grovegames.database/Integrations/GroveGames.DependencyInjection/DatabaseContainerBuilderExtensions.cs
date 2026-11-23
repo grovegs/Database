@@ -18,7 +18,7 @@ namespace GroveGames.Database.Unity
         {
             builder.AddSingleton<IDatabase>(_ =>
             {
-                var databaseBuilder = new DatabaseBuilder(DatabaseSettings.GetOrCreate());
+                var databaseBuilder = new DatabaseBuilder(UnityDatabaseSettings.GetOrCreate());
                 configure(databaseBuilder);
                 return databaseBuilder.Build();
             });

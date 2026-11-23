@@ -41,7 +41,7 @@ namespace GroveGames.Database.Unity.DeveloperTools
         public string Title => "Database";
         public VisualElement Root => _root;
 
-        public DatabasePage(IDatabase database, DeveloperToolsSettings settings)
+        public DatabasePage(IDatabase database, UnityDeveloperToolsSettings settings)
         {
             _inspector = database as IDatabaseInspector;
             _boldFont = settings.BoldFont;

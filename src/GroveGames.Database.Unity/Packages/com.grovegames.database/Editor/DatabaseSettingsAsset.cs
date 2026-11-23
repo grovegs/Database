@@ -14,46 +14,46 @@ namespace GroveGames.Database.Unity.Editor
         [InitializeOnLoadMethod]
         private static void MigrateLegacyAsset()
         {
-            if (File.Exists(LegacyAssetPath) && !EditorBuildSettings.TryGetConfigObject(DatabaseSettings.ConfigName, out DatabaseSettings _))
+            if (File.Exists(LegacyAssetPath) && !EditorBuildSettings.TryGetConfigObject(UnityDatabaseSettings.ConfigName, out UnityDatabaseSettings _))
             {
                 EditorApplication.delayCall += () => GetOrCreate();
             }
         }
 
-        public static DatabaseSettings GetOrCreate()
+        public static UnityDatabaseSettings GetOrCreate()
         {
-            if (!EditorBuildSettings.TryGetConfigObject(DatabaseSettings.ConfigName, out DatabaseSettings settings) || settings == null)
+            if (!EditorBuildSettings.TryGetConfigObject(UnityDatabaseSettings.ConfigName, out UnityDatabaseSettings settings) || settings == null)
             {
                 settings = LoadOrCreate();
-                EditorBuildSettings.AddConfigObject(DatabaseSettings.ConfigName, settings, true);
+                EditorBuildSettings.AddConfigObject(UnityDatabaseSettings.ConfigName, settings, true);
             }
 
             Preload(settings);
             return settings;
         }
 
-        private static DatabaseSettings LoadOrCreate()
+        private static UnityDatabaseSettings LoadOrCreate()
         {
             CreateFolder();
 
-            if (AssetDatabase.LoadAssetAtPath<DatabaseSettings>(AssetPath) == null && AssetDatabase.LoadAssetAtPath<DatabaseSettings>(LegacyAssetPath) != null)
+            if (AssetDatabase.LoadAssetAtPath<UnityDatabaseSettings>(AssetPath) == null && AssetDatabase.LoadAssetAtPath<UnityDatabaseSettings>(LegacyAssetPath) != null)
             {
                 AssetDatabase.MoveAsset(LegacyAssetPath, AssetPath);
             }
 
-            var settings = AssetDatabase.LoadAssetAtPath<DatabaseSettings>(AssetPath);
+            var settings = AssetDatabase.LoadAssetAtPath<UnityDatabaseSettings>(AssetPath);
 
             if (settings != null)
             {
                 return settings;
             }
 
-            AssetDatabase.CreateAsset(ScriptableObject.CreateInstance<DatabaseSettings>(), AssetPath);
+            AssetDatabase.CreateAsset(ScriptableObject.CreateInstance<UnityDatabaseSettings>(), AssetPath);
             AssetDatabase.SaveAssets();
-            return AssetDatabase.LoadAssetAtPath<DatabaseSettings>(AssetPath);
+            return AssetDatabase.LoadAssetAtPath<UnityDatabaseSettings>(AssetPath);
         }
 
-        private static void Preload(DatabaseSettings settings)
+        private static void Preload(UnityDatabaseSettings settings)
         {
             var preloaded = PlayerSettings.GetPreloadedAssets();
             var assets = new List<Object>(preloaded.Length + 1);
@@ -63,7 +63,7 @@ namespace GroveGames.Database.Unity.Editor
             {
                 var asset = preloaded[i];
 
-                if (asset is DatabaseSettings && asset != settings)
+                if (asset is UnityDatabaseSettings && asset != settings)
                 {
                     continue;
                 }

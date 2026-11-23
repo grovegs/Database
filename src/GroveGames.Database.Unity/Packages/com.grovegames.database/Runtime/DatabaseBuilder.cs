@@ -8,12 +8,12 @@ namespace GroveGames.Database.Unity
         private string _folderName;
         private bool _tamperProtection;
 
-        public DatabaseBuilder(DatabaseSettings settings)
+        public DatabaseBuilder(IDatabaseSettings settings)
         {
             if (settings == null)
             {
-                Debug.LogError("DatabaseSettings cannot be null");
-                settings = ScriptableObject.CreateInstance<DatabaseSettings>();
+                Debug.LogError("Settings cannot be null");
+                settings = ScriptableObject.CreateInstance<UnityDatabaseSettings>();
             }
 
             _folderName = settings.FolderName;
