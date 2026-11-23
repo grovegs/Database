@@ -97,7 +97,7 @@ Each document or collection is one file, `{name}.db`, in the database directory:
 
 ## Unity
 
-Install the core through [NuGetForUnity](https://github.com/GlitchEnzo/NuGetForUnity) (`GroveGames.Database`), then add the package and [GroveGames.SecureStorage](https://github.com/grovegs/SecureStorage), which it requires, to `Packages/manifest.json`:
+Install the cores through [NuGetForUnity](https://github.com/GlitchEnzo/NuGetForUnity) (`GroveGames.Database` and `GroveGames.SecureStorage`), then add the package and [GroveGames.SecureStorage](https://github.com/grovegs/SecureStorage), which it requires, to `Packages/manifest.json`:
 
 ```json
 {
