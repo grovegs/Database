@@ -10,7 +10,7 @@ namespace GroveGames.Database.Unity.Editor.Tests
         {
             var asset = DatabaseSettingsAsset.GetOrCreate();
 
-            var settings = DatabaseSettings.GetOrCreate();
+            var settings = UnityDatabaseSettings.GetOrCreate();
 
             Assert.AreSame(asset, settings);
         }

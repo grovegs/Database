@@ -42,7 +42,7 @@ namespace GroveGames.Database.Unity.Editor
 
                     var assetField = new ObjectField("Settings Asset")
                     {
-                        objectType = typeof(DatabaseSettings),
+                        objectType = typeof(UnityDatabaseSettings),
                         value = settings,
                         style = { marginBottom = 10 }
                     };
