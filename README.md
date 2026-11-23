@@ -160,6 +160,20 @@ It registers `IDatabase` and saves automatically for as long as the container li
 
 Download the Godot addon from the [latest release](https://github.com/grovegs/Database/releases/latest) and extract it to your project's `addons` folder. Use a `user://` path converted with `ProjectSettings.GlobalizePath` as the database directory.
 
+## Agent Skills
+
+The package ships an agent skill, `grovegames-database`, with the rules for game code that uses it.
+
+- **Unity:** the skill is in the package's `Skills~` folder.
+- **Godot:** the skill is in the addon's `skills` folder.
+- **.NET:** set `GroveGamesAgentSkillsDirectory` and every build copies the skill of each GroveGames package the project references into that folder:
+
+```xml
+<PropertyGroup>
+  <GroveGamesAgentSkillsDirectory>$(MSBuildThisFileDirectory).claude/skills</GroveGamesAgentSkillsDirectory>
+</PropertyGroup>
+```
+
 ## Testing
 
 ```bash
