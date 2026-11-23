@@ -13,7 +13,8 @@
     "precompiledReferences": [
         "GroveGames.Database.dll",
         "GroveGames.Serialization.dll",
-        "GroveGames.DependencyInjection.dll"
+        "GroveGames.DependencyInjection.dll",
+        "GroveGames.DeveloperTools.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [

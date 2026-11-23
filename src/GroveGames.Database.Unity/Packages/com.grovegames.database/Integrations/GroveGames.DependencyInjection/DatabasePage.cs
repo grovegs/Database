@@ -4,13 +4,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using GroveGames.DeveloperTools;
 using GroveGames.DeveloperTools.Unity;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace GroveGames.Database.Unity.DeveloperTools
 {
-    public sealed class DatabasePage : IDeveloperToolsPage
+    public sealed class DatabasePage : IDeveloperToolsPage<VisualElement>
     {
         public const int PageOrder = 200;
 
