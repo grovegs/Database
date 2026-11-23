@@ -61,8 +61,8 @@ dotnet pack -c Release
 
 - Never throw C# exceptions (ArgumentNullException, ArgumentException, etc.) in engine implementations
 - Use engine-specific error handling instead:
-  - Unity: `Debug.LogError()`, `Debug.LogWarning()`, `Debug.Assert()`
-  - Godot: `GD.PushError()`, `GD.PushWarning()`, `GD.Assert()`
+    - Unity: `Debug.LogError()`, `Debug.LogWarning()`, `Debug.Assert()`
+    - Godot: `GD.PushError()`, `GD.PushWarning()`, `GD.Assert()`
 - Check parameters for null and provide fallback values with engine logging
 - Example Unity: `if (settings == null) { Debug.LogError("Settings cannot be null"); settings = CreateInstance<Settings>(); }`
 - Example Godot: `if (settings == null) { GD.PushError("Settings cannot be null"); settings = new(); }`
@@ -82,10 +82,10 @@ dotnet pack -c Release
 
 - Unity projects must include `csc.rsp` file in `Assets/` directory to enable C# 10 features:
 
-  ```text
-  -langversion:10
-  -nullable:enable
-  ```
+    ```text
+    -langversion:10
+    -nullable:enable
+    ```
 
 - This enables nullable reference types and C# 10 language features (pattern matching, global usings, etc.)
 - Required for compatibility with the core library that uses modern C# features
@@ -116,3 +116,9 @@ Settled decisions. Ask before changing any of them.
 - **Keys** are `int`, `long`, `string` or `Guid`, encoded by internal key codecs.
 - **Names.** `IDatabase`, `IDocument<T>`, `IDocumentCollection<TKey, T>`, `GetDocument`, `GetDocumentCollection`. The implementation is `FileDatabase`, because a type named `Database` would clash with the `GroveGames.Database` namespace.
 - **Not thread-safe.** Each database is used from one thread.
+
+## Agent Skills
+
+- The rules for game code that uses this package are an agent skill. Its source is `skills/grovegames-database/`: `SKILL.md` holds the rules that apply everywhere, `unity.md` and `godot.md` hold only what differs in that engine. An engine file is optional.
+- `scripts/build_skills.sh` writes the skill each engine package ships: `SKILL.md` followed by the engine file, when there is one. Run it after every edit and commit the result. Never edit the copies under `Skills~/` or `addons/`.
+- The NuGet package ships `skills/grovegames-database/SKILL.md` as it is.
