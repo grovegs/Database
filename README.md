@@ -164,15 +164,9 @@ Download the Godot addon from the [latest release](https://github.com/grovegs/Da
 
 The package ships an agent skill, `grovegames-database`, with the rules for game code that uses it.
 
-- **Unity:** the skill is in the package's `Skills~` folder.
-- **Godot:** the skill is in the addon's `skills` folder.
-- **.NET:** set `GroveGamesAgentSkillsDirectory` and every build copies the skill of each GroveGames package the project references into that folder:
-
-```xml
-<PropertyGroup>
-  <GroveGamesAgentSkillsDirectory>$(MSBuildThisFileDirectory).claude/skills</GroveGamesAgentSkillsDirectory>
-</PropertyGroup>
-```
+- **Unity:** the package's `Skills~` folder.
+- **Godot:** the addon's `skills` folder.
+- **.NET:** `skills/grovegames-database/SKILL.md` in the NuGet package.
 
 ## Testing
 
