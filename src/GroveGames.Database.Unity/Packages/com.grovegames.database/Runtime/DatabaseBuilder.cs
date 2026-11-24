@@ -1,4 +1,5 @@
 using System.IO;
+using GroveGames.SecureStorage.Unity;
 using UnityEngine;
 
 namespace GroveGames.Database.Unity
@@ -45,7 +46,7 @@ namespace GroveGames.Database.Unity
         {
             DatabaseReset.Apply(Directory);
             var protection = _tamperProtection
-                ? DatabaseKeyStore.CreateProtection(new global::GroveGames.SecureStorage.Unity.SecureStorage())
+                ? DatabaseKeyStore.CreateProtection(new UnitySecureStorage())
                 : DatabaseProtection.None;
             return new FileDatabase(Directory, protection);
         }

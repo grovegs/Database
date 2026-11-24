@@ -1,6 +1,6 @@
 using System;
 using System.Security.Cryptography;
-using GroveGames.SecureStorage.Unity;
+using GroveGames.SecureStorage;
 using UnityEngine;
 
 namespace GroveGames.Database.Unity
