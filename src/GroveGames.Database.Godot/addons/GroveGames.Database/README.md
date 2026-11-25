@@ -68,7 +68,7 @@ database.Save();
 | `Save()` returns                          | Every change is on storage and also survives a power cut or OS crash             |
 | Crash in the middle of a write            | Only that write is lost; the torn entry is discarded when the file is next opened |
 
-`Save()` syncs every open file to storage and takes a few milliseconds, so call it at safe points such as pausing, quitting or after a purchase, not after every write.
+`Save()` syncs every open file to storage and takes a few milliseconds, so call it at safe points such as pausing, quitting or after a purchase, not after every write. If a file fails to sync, `Save()` and `Dispose()` still try every other file, then throw the first error.
 
 ### Tamper Protection
 
@@ -80,10 +80,11 @@ using var database = new FileDatabase(path, DatabaseProtection.TamperCheck(key))
 
 Without it, the database uses `DatabaseProtection.None`.
 
-- **What it does:** every entry gets an HMAC-SHA256 tag. Each file uses its own key derived from your key and the file's name, so an entry or a file copied from another store is rejected too. Data stays readable; this detects editing, it does not hide data.
+- **What it does:** every entry gets an HMAC-SHA256 tag that also covers the entry before it, so entries can't be edited, removed from the middle, reordered or repeated. Each file uses its own key derived from your key and the file's name, so an entry or a file copied from another store is rejected too. Data stays readable; this detects editing, it does not hide data.
+- **What it can't detect:** restoring an older copy of a whole file, or cutting the last entries off a file, which looks the same as a crash during a write. Each value is checked, but the file is not compared against anything outside the device. Files written by releases before chained tags (header version 2) are still accepted once and then upgraded, so entries of such a file kept from before the upgrade can be removed or reordered.
 - **On a mismatch:** opening a document or collection throws `DatabaseTamperedException`, and the game decides what to do. A torn last write is still trimmed silently, as without a key.
-- **Existing files:** a file written without a key is protected the first time it is opened with one. A protected file cannot be opened without its key.
-- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing.
+- **Existing files:** a file written without a key is rejected with `DatabaseTamperedException` when it is opened with one, since anyone could write an unprotected file. Pass `DatabaseProtection.TamperCheck(key, trustExistingFiles: true)` once to sign files you trust, such as when turning protection on for existing players. A protected file cannot be opened without its key.
+- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing on .NET.
 
 ### Storage
 
@@ -91,7 +92,7 @@ Each document or collection is one file, `{name}.db`, in the database directory:
 
 - **Format:** an 8-byte header, then one entry per change: `[length][kind][payload][CRC32]`. The payload holds the key and the value in MessagePack.
 - **Opening:** a file is read once, keeping the latest value for each key, and everything is held in memory.
-- **Compaction:** if most of a file is overwritten or removed entries, it is rewritten into a temporary file, synced, and swapped in atomically. A leftover temporary file from an interrupted compaction is removed on the next open.
+- **Compaction:** if most of a file is overwritten or removed entries, it is rewritten into a temporary file, synced, and swapped in atomically. If compaction fails, the store keeps writing to its file and the next save tries again. A leftover temporary file from an interrupted compaction is removed on the next open.
 - **Migrations:** values written by an older version of a type are migrated when the file is opened, and the file is then rewritten the same way with the migrated values, so each value is migrated only once.
 - **New files:** creating or replacing a file also syncs its folder, so a new file can't disappear after a power cut.
 
