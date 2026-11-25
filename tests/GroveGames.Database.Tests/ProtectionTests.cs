@@ -178,6 +178,43 @@ public sealed class ProtectionTests : IDisposable
     }
 
     [Fact]
+    public void Reopen_ChainedEntriesReframedAsVersionTwo_ThrowsDatabaseTamperedException()
+    {
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            var wallet = database.GetDocument<ProtectedWallet>("wallet");
+            wallet.Set(new ProtectedWallet { Gold = 1 });
+            wallet.Set(new ProtectedWallet { Gold = 2 });
+        }
+
+        var contents = File.ReadAllBytes(PathOf("wallet"));
+        var reframed = new List<byte>(contents.AsSpan(0, 8).ToArray());
+        reframed[4] = 2;
+        var previousTag = new byte[16];
+        var position = 8;
+
+        while (position < contents.Length)
+        {
+            var payloadLength = BinaryPrimitives.ReadInt32LittleEndian(contents.AsSpan(position));
+            var tag = contents.AsSpan(position + 9 + payloadLength, 16).ToArray();
+            byte[] signed = [.. previousTag, .. contents.AsSpan(position + 4, payloadLength + 1)];
+            var entry = new byte[4 + signed.Length + 4];
+            BinaryPrimitives.WriteInt32LittleEndian(entry, signed.Length - 1);
+            signed.CopyTo(entry.AsSpan(4));
+            BinaryPrimitives.WriteUInt32LittleEndian(entry.AsSpan(4 + signed.Length), Crc32.Compute(signed));
+            reframed.AddRange(entry);
+            reframed.AddRange(tag);
+            previousTag = tag;
+            position += 9 + payloadLength + 16;
+        }
+
+        File.WriteAllBytes(PathOf("wallet"), [.. reframed]);
+        using var reopened = Open(DatabaseProtection.TamperCheck(s_key));
+
+        Assert.Throws<DatabaseTamperedException>(() => reopened.GetDocument<ProtectedWallet>("wallet"));
+    }
+
+    [Fact]
     public void Reopen_UnchainedVersionTwoFile_ReadsAndUpgradesIt()
     {
         Directory.CreateDirectory(_directory);

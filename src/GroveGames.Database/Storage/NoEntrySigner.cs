@@ -21,6 +21,11 @@ internal sealed class NoEntrySigner : IEntrySigner
         return true;
     }
 
+    public bool VerifyUnchained(ReadOnlySpan<byte> data, ReadOnlySpan<byte> tag)
+    {
+        return true;
+    }
+
     public void Dispose()
     {
     }

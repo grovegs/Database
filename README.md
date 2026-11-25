@@ -1,4 +1,4 @@
-﻿# GroveGames.Database
+# GroveGames.Database
 
 Fast, crash-safe local document database for games on .NET, Unity and Godot, built on [GroveGames.Serialization](https://github.com/grovegs/Serialization).
 
@@ -81,10 +81,10 @@ using var database = new FileDatabase(path, DatabaseProtection.TamperCheck(key))
 Without it, the database uses `DatabaseProtection.None`.
 
 - **What it does:** every entry gets an HMAC-SHA256 tag that also covers the entry before it, so entries can't be edited, removed from the middle, reordered or repeated. Each file uses its own key derived from your key and the file's name, so an entry or a file copied from another store is rejected too. Data stays readable; this detects editing, it does not hide data.
-- **What it can't detect:** restoring an older copy of a whole file, or cutting the last entries off a file, which looks the same as a crash during a write. Each value is checked, but the file is not compared against anything outside the device.
+- **What it can't detect:** restoring an older copy of a whole file, or cutting the last entries off a file, which looks the same as a crash during a write. Each value is checked, but the file is not compared against anything outside the device. Files written by releases before chained tags (header version 2) are still accepted once and then upgraded, so entries of such a file kept from before the upgrade can be removed or reordered.
 - **On a mismatch:** opening a document or collection throws `DatabaseTamperedException`, and the game decides what to do. A torn last write is still trimmed silently, as without a key.
 - **Existing files:** a file written without a key is rejected with `DatabaseTamperedException` when it is opened with one, since anyone could write an unprotected file. Pass `DatabaseProtection.TamperCheck(key, trustExistingFiles: true)` once to sign files you trust, such as when turning protection on for existing players. A protected file cannot be opened without its key.
-- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing.
+- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing on .NET.
 
 ### Storage
 

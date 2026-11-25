@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Runtime.ExceptionServices;
 using GroveGames.Database.Storage;
 using GroveGames.Serialization;
 
@@ -132,7 +133,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         if (first is not null)
         {
-            throw first;
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 
@@ -162,7 +163,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         if (first is not null)
         {
-            throw first;
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 

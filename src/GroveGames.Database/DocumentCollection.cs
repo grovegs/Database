@@ -140,6 +140,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
 
     void IStore.Sync()
     {
+        _file.Sync();
         var dead = _entryCount - _items.Count;
 
         if (dead > CompactionThreshold && dead > _items.Count)
@@ -153,10 +154,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
             });
 
             _entryCount = _items.Count;
-            return;
         }
-
-        _file.Sync();
     }
 
     void IDisposable.Dispose()

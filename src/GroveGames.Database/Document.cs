@@ -63,14 +63,13 @@ public sealed class Document<T> : IDocument<T>, IStore
 
     void IStore.Sync()
     {
+        _file.Sync();
+
         if (_entryCount > CompactionThreshold)
         {
             _file.Rewrite(this, static (_, document) => document.WriteValue(document._value));
             _entryCount = 1;
-            return;
         }
-
-        _file.Sync();
     }
 
     void IDisposable.Dispose()

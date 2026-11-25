@@ -1,4 +1,4 @@
-﻿#if GROVEGAMES_DEVELOPERTOOLS
+#if GROVEGAMES_DEVELOPERTOOLS
 using System;
 using System.Collections;
 using System.Collections.Generic;

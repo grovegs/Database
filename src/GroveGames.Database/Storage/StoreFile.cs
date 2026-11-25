@@ -202,11 +202,16 @@ internal sealed class StoreFile : IDisposable
             write(this, state);
             DiskSync.Flush(rewrite);
         }
-        finally
+        catch
         {
             _rewrite = null;
             rewrite.Dispose();
+            DeleteTemporary();
+            throw;
         }
+
+        _rewrite = null;
+        rewrite.Dispose();
 
         _stream.Dispose();
         var replaced = false;
@@ -243,11 +248,28 @@ internal sealed class StoreFile : IDisposable
             return;
         }
 
-        Sync();
-        _disposed = true;
-        _rewrite?.Dispose();
-        _stream.Dispose();
-        _signer.Dispose();
+        try
+        {
+            Sync();
+        }
+        finally
+        {
+            _disposed = true;
+            _rewrite?.Dispose();
+            _stream.Dispose();
+            _signer.Dispose();
+        }
+    }
+
+    private void DeleteTemporary()
+    {
+        try
+        {
+            File.Delete(_temporaryPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private static int Parse(string path, byte[] contents, StoreKind kind, List<StoredEntry> entries, IEntrySigner signer, byte[] chain, out bool current)
@@ -301,7 +323,7 @@ internal sealed class StoreFile : IDisposable
 
             var tag = contents.AsSpan(checksumStart + ChecksumLength, tagLength);
 
-            if (verify && !signer.Verify(version == ChainedVersion ? chain : [], signed, tag))
+            if (verify && !(version == ChainedVersion ? signer.Verify(chain, signed, tag) : signer.VerifyUnchained(signed, tag)))
             {
                 throw new DatabaseTamperedException($"'{path}' was modified outside the database.");
             }
