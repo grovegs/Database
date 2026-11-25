@@ -58,10 +58,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
     public void Upsert(T value)
     {
         var key = _keySelector(value);
-        var payload = _file.BeginEntry(EntryKind.Upsert);
-        _keyCodec.Write(payload, key);
-        _serializer.Serialize(value, payload);
-        _file.CommitEntry();
+        WriteUpsert(key, value);
         _items[key] = value;
         _entryCount++;
     }
@@ -141,17 +138,14 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
 
         if (dead > CompactionThreshold && dead > _items.Count)
         {
-            _file.BeginRewrite();
-
-            foreach (var pair in _items)
+            _file.Rewrite(this, static (_, collection) =>
             {
-                var payload = _file.BeginEntry(EntryKind.Upsert);
-                _keyCodec.Write(payload, pair.Key);
-                _serializer.Serialize(pair.Value, payload);
-                _file.CommitEntry();
-            }
+                foreach (var pair in collection._items)
+                {
+                    collection.WriteUpsert(pair.Key, pair.Value);
+                }
+            });
 
-            _file.CommitRewrite();
             _entryCount = _items.Count;
             return;
         }
@@ -164,37 +158,19 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         _file.Dispose();
     }
 
-    private void Rewrite(List<StoredEntry> live, int version)
+    private void WriteUpsert(TKey key, T value)
     {
-        var contents = _file.Contents;
-        _file.BeginRewrite();
-
-        for (var i = 0; i < live.Count; i++)
-        {
-            var entry = live[i];
-            var key = _keyCodec.Read(contents.AsSpan(entry.PayloadStart, entry.PayloadLength), out var keyLength);
-
-            if (PayloadVersion.Read(contents.AsSpan(entry.PayloadStart + keyLength, entry.PayloadLength - keyLength)) < version)
-            {
-                var payload = _file.BeginEntry(EntryKind.Upsert);
-                _keyCodec.Write(payload, key);
-                _serializer.Serialize(_items[key], payload);
-                _file.CommitEntry();
-            }
-            else
-            {
-                _file.CopyEntry(entry);
-            }
-        }
-
-        _file.CommitRewrite();
+        var payload = _file.BeginEntry(EntryKind.Upsert);
+        _keyCodec.Write(payload, key);
+        _serializer.Serialize(value, payload);
+        _file.CommitEntry();
     }
 
     private void Load()
     {
         var contents = _file.Contents;
         var entries = _file.Entries;
-        var latest = new Dictionary<TKey, int>();
+        var latest = new Dictionary<TKey, (int Index, int KeyLength)>();
 
         for (var i = 0; i < entries.Count; i++)
         {
@@ -203,7 +179,8 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
             switch (entry.Kind)
             {
                 case EntryKind.Upsert:
-                    latest[_keyCodec.Read(contents.AsSpan(entry.PayloadStart, entry.PayloadLength), out _)] = i;
+                    var key = _keyCodec.Read(contents.AsSpan(entry.PayloadStart, entry.PayloadLength), out var keyLength);
+                    latest[key] = (i, keyLength);
                     break;
                 case EntryKind.Remove:
                     latest.Remove(_keyCodec.Read(contents.AsSpan(entry.PayloadStart, entry.PayloadLength), out _));
@@ -217,31 +194,41 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         }
 
         var version = Formatters.GetVersion<T>();
-        var live = new List<StoredEntry>(latest.Count);
-        var outdated = 0;
+        var live = new List<(StoredEntry Entry, TKey Key, bool Outdated)>(latest.Count);
+        var outdated = false;
 
         foreach (var pair in latest)
         {
-            var entry = entries[pair.Value];
-            _keyCodec.Read(contents.AsSpan(entry.PayloadStart, entry.PayloadLength), out var keyLength);
+            var entry = entries[pair.Value.Index];
+            var keyLength = pair.Value.KeyLength;
             var payload = contents.AsMemory(entry.PayloadStart + keyLength, entry.PayloadLength - keyLength);
             _items[pair.Key] = _serializer.Deserialize<T>(payload)!;
-            live.Add(entry);
-
-            if (PayloadVersion.Read(payload.Span) < version)
-            {
-                outdated++;
-            }
+            var isOutdated = _serializer.ReadVersion(payload) < version;
+            live.Add((entry, pair.Key, isOutdated));
+            outdated |= isOutdated;
         }
 
         var dead = entries.Count - live.Count;
-
         _entryCount = entries.Count;
 
-        if (outdated > 0 || (dead > CompactionThreshold && dead > live.Count))
+        if (outdated || (dead > CompactionThreshold && dead > live.Count))
         {
-            live.Sort(static (left, right) => left.Start.CompareTo(right.Start));
-            Rewrite(live, version);
+            live.Sort(static (left, right) => left.Entry.Start.CompareTo(right.Entry.Start));
+            _file.Rewrite((this, live), static (file, state) =>
+            {
+                foreach (var (entry, key, isOutdated) in state.live)
+                {
+                    if (isOutdated)
+                    {
+                        state.Item1.WriteUpsert(key, state.Item1._items[key]);
+                    }
+                    else
+                    {
+                        file.CopyEntry(entry);
+                    }
+                }
+            });
+
             _entryCount = live.Count;
         }
 

@@ -12,11 +12,11 @@ internal sealed class NoEntrySigner : IEntrySigner
 
     public bool TrustsExistingTags => false;
 
-    public void Sign(ReadOnlySpan<byte> data, Span<byte> tag)
+    public void Sign(ReadOnlySpan<byte> previousTag, ReadOnlySpan<byte> data, Span<byte> tag)
     {
     }
 
-    public bool Verify(ReadOnlySpan<byte> data, ReadOnlySpan<byte> tag)
+    public bool Verify(ReadOnlySpan<byte> previousTag, ReadOnlySpan<byte> data, ReadOnlySpan<byte> tag)
     {
         return true;
     }

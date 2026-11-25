@@ -10,15 +10,17 @@ internal sealed class StoreFile : IDisposable
     private const int ChecksumLength = 4;
     private const byte PlainVersion = 1;
     private const byte AuthenticatedVersion = 2;
+    private const byte ChainedVersion = 3;
 
     private static readonly byte[] s_magic = [(byte)'G', (byte)'G', (byte)'D', (byte)'B'];
 
     private readonly string _path;
+    private readonly string _temporaryPath;
     private readonly StoreKind _kind;
     private readonly ByteBuffer _payload;
     private readonly IEntrySigner _signer;
-    private readonly int _contentsTagLength;
-    private readonly bool _resign;
+    private readonly byte[] _chain;
+    private readonly byte[] _rewriteChain;
     private byte[] _scratch;
     private EntryKind _pendingKind;
     private FileStream _stream;
@@ -28,14 +30,15 @@ internal sealed class StoreFile : IDisposable
     private byte[] _contents;
     private List<StoredEntry> _entries;
 
-    private StoreFile(string path, StoreKind kind, FileStream stream, byte[] contents, List<StoredEntry> entries, IEntrySigner signer, bool contentsAuthenticated)
+    private StoreFile(string path, StoreKind kind, FileStream stream, byte[] contents, List<StoredEntry> entries, IEntrySigner signer, byte[] chain)
     {
         _path = path;
+        _temporaryPath = path + ".tmp";
         _kind = kind;
         _stream = stream;
         _signer = signer;
-        _contentsTagLength = contentsAuthenticated ? signer.TagLength : 0;
-        _resign = signer.TagLength > 0 && (!contentsAuthenticated || signer.TrustsExistingTags);
+        _chain = chain;
+        _rewriteChain = new byte[signer.TagLength];
         _payload = new ByteBuffer(256);
         _scratch = new byte[256];
         _pendingKind = EntryKind.Value;
@@ -62,7 +65,8 @@ internal sealed class StoreFile : IDisposable
         var exists = File.Exists(path);
         var contents = exists ? File.ReadAllBytes(path) : [];
         var entries = new List<StoredEntry>();
-        var validLength = Parse(path, contents, kind, entries, signer, out var authenticated);
+        var chain = new byte[signer.TagLength];
+        var validLength = Parse(path, contents, kind, entries, signer, chain, out var current);
         var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
 
         try
@@ -73,7 +77,7 @@ internal sealed class StoreFile : IDisposable
                 stream.Write(CreateHeader(kind, signer.TagLength > 0), 0, HeaderLength);
                 DiskSync.Flush(stream);
                 validLength = HeaderLength;
-                authenticated = signer.TagLength > 0;
+                current = true;
 
                 if (!exists)
                 {
@@ -87,27 +91,37 @@ internal sealed class StoreFile : IDisposable
             }
 
             stream.Position = validLength;
-            var file = new StoreFile(path, kind, stream, contents, entries, signer, authenticated);
-
-            if (file._resign)
-            {
-                file.BeginRewrite();
-
-                foreach (var entry in entries)
-                {
-                    file.CopyEntry(entry);
-                }
-
-                file.CommitRewrite();
-            }
-
-            return file;
         }
         catch
         {
             stream.Dispose();
             throw;
         }
+
+        var file = new StoreFile(path, kind, stream, contents, entries, signer, chain);
+
+        if (current)
+        {
+            return file;
+        }
+
+        try
+        {
+            file.Rewrite(entries, static (target, copied) =>
+            {
+                foreach (var entry in copied)
+                {
+                    target.CopyEntry(entry);
+                }
+            });
+        }
+        catch
+        {
+            file.Dispose();
+            throw;
+        }
+
+        return file;
     }
 
     public ByteBuffer BeginEntry(EntryKind kind)
@@ -133,8 +147,11 @@ internal sealed class StoreFile : IDisposable
         BinaryPrimitives.WriteInt32LittleEndian(entry, payload.Length);
         entry[4] = (byte)_pendingKind;
         payload.CopyTo(entry.Slice(EntryPrefixLength));
-        BinaryPrimitives.WriteUInt32LittleEndian(entry.Slice(EntryPrefixLength + payload.Length), Crc32.Compute(entry.Slice(4, payload.Length + 1)));
-        _signer.Sign(entry.Slice(4, payload.Length + 1), entry.Slice(EntryPrefixLength + payload.Length + ChecksumLength));
+        var signed = entry.Slice(4, payload.Length + 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(entry.Slice(EntryPrefixLength + payload.Length), Crc32.Compute(signed));
+        var chain = _rewrite is null ? _chain : _rewriteChain;
+        var tag = entry.Slice(EntryPrefixLength + payload.Length + ChecksumLength);
+        _signer.Sign(chain, signed, tag);
         var stream = _rewrite ?? _stream;
         var start = stream.Position;
 
@@ -149,7 +166,24 @@ internal sealed class StoreFile : IDisposable
             throw;
         }
 
+        tag.CopyTo(chain);
         _dirty = _rewrite is null || _dirty;
+    }
+
+    public void CopyEntry(StoredEntry entry)
+    {
+        var rewrite = _rewrite!;
+        rewrite.Write(_contents, entry.Start, EntryPrefixLength + entry.PayloadLength + ChecksumLength);
+
+        if (_signer.TagLength == 0)
+        {
+            return;
+        }
+
+        Span<byte> tag = stackalloc byte[_signer.TagLength];
+        _signer.Sign(_rewriteChain, _contents.AsSpan(entry.PayloadStart - 1, entry.PayloadLength + 1), tag);
+        rewrite.Write(tag);
+        tag.CopyTo(_rewriteChain);
     }
 
     public void Sync()
@@ -163,39 +197,45 @@ internal sealed class StoreFile : IDisposable
         _dirty = false;
     }
 
-    public void BeginRewrite()
+    public void Rewrite<TState>(TState state, Action<StoreFile, TState> write)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _rewrite = new FileStream(_path + ".tmp", FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.None);
-        _rewrite.Write(CreateHeader(_kind, _signer.TagLength > 0), 0, HeaderLength);
-    }
+        var rewrite = new FileStream(_temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.None);
+        _rewrite = rewrite;
+        _rewriteChain.AsSpan().Clear();
 
-    public void CopyEntry(StoredEntry entry)
-    {
-        if (!_resign)
+        try
         {
-            _rewrite!.Write(Contents, entry.Start, entry.Length);
-            return;
+            rewrite.Write(CreateHeader(_kind, _signer.TagLength > 0), 0, HeaderLength);
+            write(this, state);
+            DiskSync.Flush(rewrite);
+        }
+        finally
+        {
+            _rewrite = null;
+            rewrite.Dispose();
         }
 
-        _rewrite!.Write(Contents, entry.Start, entry.Length - _contentsTagLength);
-        Span<byte> tag = stackalloc byte[_signer.TagLength];
-        _signer.Sign(Contents.AsSpan(entry.PayloadStart - 1, entry.PayloadLength + 1), tag);
-        _rewrite.Write(tag);
-    }
-
-    public void CommitRewrite()
-    {
-        var rewrite = _rewrite!;
-        DiskSync.Flush(rewrite);
-        rewrite.Dispose();
-        _rewrite = null;
         _stream.Dispose();
-        File.Replace(_path + ".tmp", _path, null);
-        DiskSync.FlushDirectory(Path.GetDirectoryName(Path.GetFullPath(_path))!);
-        _stream = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
-        _stream.Position = _stream.Length;
-        _dirty = false;
+        var replaced = false;
+
+        try
+        {
+            File.Replace(_temporaryPath, _path, null);
+            replaced = true;
+            DiskSync.FlushDirectory(Path.GetDirectoryName(Path.GetFullPath(_path))!);
+        }
+        finally
+        {
+            _stream = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
+            _stream.Position = _stream.Length;
+
+            if (replaced)
+            {
+                _rewriteChain.CopyTo(_chain, 0);
+                _dirty = false;
+            }
+        }
     }
 
     public void ReleaseContents()
@@ -218,21 +258,23 @@ internal sealed class StoreFile : IDisposable
         _signer.Dispose();
     }
 
-    private static int Parse(string path, byte[] contents, StoreKind kind, List<StoredEntry> entries, IEntrySigner signer, out bool authenticated)
+    private static int Parse(string path, byte[] contents, StoreKind kind, List<StoredEntry> entries, IEntrySigner signer, byte[] chain, out bool current)
     {
-        authenticated = false;
+        current = true;
 
         if (contents.Length < HeaderLength)
         {
             return 0;
         }
 
-        if (!contents.AsSpan(0, 4).SequenceEqual(s_magic) || contents[4] is not (PlainVersion or AuthenticatedVersion))
+        var version = contents[4];
+
+        if (!contents.AsSpan(0, 4).SequenceEqual(s_magic) || version is not (PlainVersion or AuthenticatedVersion or ChainedVersion))
         {
             throw new FormatException($"'{path}' is not a database file of a supported version.");
         }
 
-        authenticated = contents[4] == AuthenticatedVersion;
+        var authenticated = version != PlainVersion;
 
         if (authenticated && signer.TagLength == 0)
         {
@@ -245,6 +287,7 @@ internal sealed class StoreFile : IDisposable
         }
 
         var tagLength = authenticated ? signer.TagLength : 0;
+        var verify = authenticated && !signer.TrustsExistingTags;
         var position = HeaderLength;
 
         while (contents.Length - position >= EntryPrefixLength + ChecksumLength + tagLength)
@@ -256,30 +299,42 @@ internal sealed class StoreFile : IDisposable
                 break;
             }
 
+            var signed = contents.AsSpan(position + 4, payloadLength + 1);
             var checksumStart = position + EntryPrefixLength + payloadLength;
-            var expected = BinaryPrimitives.ReadUInt32LittleEndian(contents.AsSpan(checksumStart));
 
-            if (Crc32.Compute(contents.AsSpan(position + 4, payloadLength + 1)) != expected)
+            if (Crc32.Compute(signed) != BinaryPrimitives.ReadUInt32LittleEndian(contents.AsSpan(checksumStart)))
             {
                 break;
             }
 
-            if (authenticated && !signer.TrustsExistingTags && !signer.Verify(contents.AsSpan(position + 4, payloadLength + 1), contents.AsSpan(checksumStart + ChecksumLength, tagLength)))
+            var tag = contents.AsSpan(checksumStart + ChecksumLength, tagLength);
+
+            if (verify && !signer.Verify(version == ChainedVersion ? chain : [], signed, tag))
             {
                 throw new DatabaseTamperedException($"'{path}' was modified outside the database.");
             }
 
-            var entryKind = (EntryKind)contents[position + 4];
+            if (version == ChainedVersion)
+            {
+                tag.CopyTo(chain);
+            }
+
             var length = EntryPrefixLength + payloadLength + ChecksumLength + tagLength;
-            entries.Add(new StoredEntry(entryKind, position, length, position + EntryPrefixLength, payloadLength));
+            entries.Add(new StoredEntry((EntryKind)contents[position + 4], position, length, position + EntryPrefixLength, payloadLength));
             position += length;
         }
 
+        if (signer.TagLength > 0 && !authenticated && entries.Count > 0 && !signer.TrustsExistingTags)
+        {
+            throw new DatabaseTamperedException($"'{path}' is not protected, so it was not written by this database with its key.");
+        }
+
+        current = signer.TagLength == 0 || (version == ChainedVersion && !signer.TrustsExistingTags);
         return position;
     }
 
     private static byte[] CreateHeader(StoreKind kind, bool authenticated)
     {
-        return [s_magic[0], s_magic[1], s_magic[2], s_magic[3], authenticated ? AuthenticatedVersion : PlainVersion, (byte)kind, 0, 0];
+        return [s_magic[0], s_magic[1], s_magic[2], s_magic[3], authenticated ? ChainedVersion : PlainVersion, (byte)kind, 0, 0];
     }
 }
