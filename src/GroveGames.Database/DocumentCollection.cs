@@ -15,6 +15,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
     private readonly Func<T, TKey> _keySelector;
     private readonly IKeyCodec<TKey> _keyCodec;
     private readonly Dictionary<TKey, T> _items;
+    private int _entryCount;
 
     internal DocumentCollection(string path, MessagePackSerializer serializer, Func<T, TKey> keySelector, IEntrySigner signer)
     {
@@ -62,6 +63,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         _serializer.Serialize(value, payload);
         _file.CommitEntry();
         _items[key] = value;
+        _entryCount++;
     }
 
     public bool Remove(TKey key)
@@ -75,6 +77,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         _keyCodec.Write(payload, key);
         _file.CommitEntry();
         _items.Remove(key);
+        _entryCount++;
         return true;
     }
 
@@ -88,6 +91,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         _file.BeginEntry(EntryKind.Clear);
         _file.CommitEntry();
         _items.Clear();
+        _entryCount++;
     }
 
     public Dictionary<TKey, T>.ValueCollection.Enumerator GetEnumerator()
@@ -133,6 +137,25 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
 
     void IStore.Sync()
     {
+        var dead = _entryCount - _items.Count;
+
+        if (dead > CompactionThreshold && dead > _items.Count)
+        {
+            _file.BeginRewrite();
+
+            foreach (var pair in _items)
+            {
+                var payload = _file.BeginEntry(EntryKind.Upsert);
+                _keyCodec.Write(payload, pair.Key);
+                _serializer.Serialize(pair.Value, payload);
+                _file.CommitEntry();
+            }
+
+            _file.CommitRewrite();
+            _entryCount = _items.Count;
+            return;
+        }
+
         _file.Sync();
     }
 
@@ -213,10 +236,13 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
 
         var dead = entries.Count - live.Count;
 
+        _entryCount = entries.Count;
+
         if (outdated > 0 || (dead > CompactionThreshold && dead > live.Count))
         {
             live.Sort(static (left, right) => left.Start.CompareTo(right.Start));
             Rewrite(live, version);
+            _entryCount = live.Count;
         }
 
         _file.ReleaseContents();

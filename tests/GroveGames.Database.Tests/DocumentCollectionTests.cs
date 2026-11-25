@@ -151,6 +151,34 @@ public sealed class DocumentCollectionTests : IDisposable
     }
 
     [Fact]
+    public void Save_ManyOverwrites_CompactsWithoutReopening()
+    {
+        var path = Path.Combine(_directory, "players.db");
+
+        using (var database = Open())
+        {
+            var players = Players(database);
+            players.Upsert(new CollectionPlayer { Id = 2, Gold = 7 });
+
+            for (var i = 0; i < 100; i++)
+            {
+                players.Upsert(new CollectionPlayer { Id = 1, Gold = i });
+            }
+
+            var before = new FileInfo(path).Length;
+            database.Save();
+            players.Upsert(new CollectionPlayer { Id = 1, Gold = 100 });
+
+            Assert.True(new FileInfo(path).Length < before / 10);
+        }
+
+        using var reopened = Open();
+
+        Assert.Equal(100, Players(reopened).Get(1).Gold);
+        Assert.Equal(7, Players(reopened).Get(2).Gold);
+    }
+
+    [Fact]
     public void Reopen_LeftoverCompactionFile_IsRemoved()
     {
         using (var database = Open())

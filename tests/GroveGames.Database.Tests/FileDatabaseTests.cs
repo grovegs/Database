@@ -52,6 +52,56 @@ public sealed class FileDatabaseTests : IDisposable
         Assert.Throws<FormatException>(() => reopened.GetDocument<DatabaseItem>("items"));
     }
 
+    [Fact]
+    public void GetDocument_UnreadableFileWithHandler_QuarantinesItAndOpensEmpty()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "profile.db");
+        File.WriteAllBytes(path, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        var reported = new List<string>();
+        using var database = new FileDatabase(_directory, DatabaseProtection.None, (name, _) => reported.Add(name));
+
+        var profile = database.GetDocument<DatabaseItem>("profile");
+        profile.Set(new DatabaseItem { Id = 3 });
+
+        Assert.Equal(["profile"], reported);
+        Assert.True(File.Exists(path + ".corrupt"));
+        Assert.Equal(3, profile.Value.Id);
+    }
+
+    [Fact]
+    public void GetDocument_UnreadableFileWithoutHandler_Throws()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllBytes(Path.Combine(_directory, "profile.db"), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        using var database = Open();
+
+        Assert.Throws<FormatException>(() => database.GetDocument<DatabaseItem>("profile"));
+    }
+
+    [Fact]
+    public void GetDocument_TamperedFileWithHandler_QuarantinesIt()
+    {
+        var key = new byte[32];
+
+        using (var database = new FileDatabase(_directory, DatabaseProtection.TamperCheck(key)))
+        {
+            database.GetDocument<DatabaseItem>("profile").Set(new DatabaseItem { Id = 1 });
+        }
+
+        var path = Path.Combine(_directory, "profile.db");
+        var bytes = File.ReadAllBytes(path);
+        bytes[^1] ^= 0xFF;
+        File.WriteAllBytes(path, bytes);
+        var reported = 0;
+        using var reopened = new FileDatabase(_directory, DatabaseProtection.TamperCheck(key), (_, _) => reported++);
+
+        var profile = reopened.GetDocument<DatabaseItem>("profile");
+
+        Assert.Equal(1, reported);
+        Assert.Equal(0, profile.Value.Id);
+    }
+
     [Theory]
     [InlineData("../escape")]
     [InlineData("with space")]

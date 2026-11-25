@@ -11,6 +11,7 @@ public sealed class Document<T> : IDocument<T>, IStore
     private readonly StoreFile _file;
     private readonly MessagePackSerializer _serializer;
     private T _value;
+    private int _entryCount;
 
     internal Document(string path, MessagePackSerializer serializer, IEntrySigner signer)
     {
@@ -38,6 +39,7 @@ public sealed class Document<T> : IDocument<T>, IStore
         _serializer.Serialize(value, payload);
         _file.CommitEntry();
         _value = value;
+        _entryCount++;
     }
 
     object? IStore.Inspect()
@@ -57,6 +59,16 @@ public sealed class Document<T> : IDocument<T>, IStore
 
     void IStore.Sync()
     {
+        if (_entryCount > CompactionThreshold)
+        {
+            _file.BeginRewrite();
+            _serializer.Serialize(_value, _file.BeginEntry(EntryKind.Value));
+            _file.CommitEntry();
+            _file.CommitRewrite();
+            _entryCount = 1;
+            return;
+        }
+
         _file.Sync();
     }
 
@@ -81,9 +93,12 @@ public sealed class Document<T> : IDocument<T>, IStore
 
         if (latest < 0)
         {
+            _entryCount = entries.Count;
             _file.ReleaseContents();
             return new T();
         }
+
+        _entryCount = 1;
 
         var payload = _file.Contents.AsMemory(entries[latest].PayloadStart, entries[latest].PayloadLength);
         var value = _serializer.Deserialize<T>(payload) ?? new T();
@@ -100,6 +115,10 @@ public sealed class Document<T> : IDocument<T>, IStore
             _file.BeginRewrite();
             _file.CopyEntry(entries[latest]);
             _file.CommitRewrite();
+        }
+        else
+        {
+            _entryCount = entries.Count;
         }
 
         _file.ReleaseContents();

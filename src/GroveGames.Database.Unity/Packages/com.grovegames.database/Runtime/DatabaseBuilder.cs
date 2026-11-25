@@ -48,7 +48,7 @@ namespace GroveGames.Database.Unity
             var protection = _tamperProtection
                 ? DatabaseKeyStore.CreateProtection(new UnitySecureStorage())
                 : DatabaseProtection.None;
-            return new FileDatabase(Directory, protection);
+            return new FileDatabase(Directory, protection, static (name, exception) => Debug.LogError($"The '{name}' store could not be read, so it was moved to {name}.db.corrupt and opened empty. {exception}"));
         }
     }
 }

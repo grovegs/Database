@@ -259,8 +259,6 @@ namespace GroveGames.Database.Unity.Editor.Tests
 
         private sealed class TestRecord
         {
-            private readonly string _title;
-
             public int Id;
             public bool Enabled;
             public TestPosition Position;
@@ -268,15 +266,15 @@ namespace GroveGames.Database.Unity.Editor.Tests
             public string? Name;
             public int? Limit;
 
-            [Ignore]
+            [GroveGames.Serialization.Ignore]
             public int Hidden;
 
-            public string Title => _title;
+            public string Title { get; }
             public int Doubled => Id * 2;
 
             public TestRecord()
             {
-                _title = "Record";
+                Title = "Record";
             }
         }
     }

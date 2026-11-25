@@ -135,7 +135,20 @@ internal sealed class StoreFile : IDisposable
         payload.CopyTo(entry.Slice(EntryPrefixLength));
         BinaryPrimitives.WriteUInt32LittleEndian(entry.Slice(EntryPrefixLength + payload.Length), Crc32.Compute(entry.Slice(4, payload.Length + 1)));
         _signer.Sign(entry.Slice(4, payload.Length + 1), entry.Slice(EntryPrefixLength + payload.Length + ChecksumLength));
-        (_rewrite ?? _stream).Write(_scratch, 0, length);
+        var stream = _rewrite ?? _stream;
+        var start = stream.Position;
+
+        try
+        {
+            stream.Write(_scratch, 0, length);
+        }
+        catch
+        {
+            stream.SetLength(start);
+            stream.Position = start;
+            throw;
+        }
+
         _dirty = _rewrite is null || _dirty;
     }
 

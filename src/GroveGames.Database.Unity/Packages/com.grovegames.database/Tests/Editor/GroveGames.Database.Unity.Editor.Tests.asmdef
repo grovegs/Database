@@ -16,6 +16,7 @@
     "precompiledReferences": [
         "GroveGames.Database.dll",
         "GroveGames.Serialization.dll",
+        "GroveGames.SecureStorage.dll",
         "nunit.framework.dll"
     ],
     "autoReferenced": false,

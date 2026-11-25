@@ -11,6 +11,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
     private readonly MessagePackSerializer _serializer;
     private readonly DatabaseProtection _protection;
     private readonly Dictionary<string, object> _stores;
+    private readonly Action<string, Exception>? _unreadableStoreHandler;
     private bool _disposed;
 
     public FileDatabase(string directory)
@@ -19,6 +20,11 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
     }
 
     public FileDatabase(string directory, DatabaseProtection protection)
+        : this(directory, protection, null)
+    {
+    }
+
+    public FileDatabase(string directory, DatabaseProtection protection, Action<string, Exception>? unreadableStoreHandler)
     {
         ArgumentException.ThrowIfNullOrEmpty(directory);
         ArgumentNullException.ThrowIfNull(protection);
@@ -38,6 +44,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         _serializer = new MessagePackSerializer();
         _protection = protection;
         _stores = new Dictionary<string, object>(StringComparer.Ordinal);
+        _unreadableStoreHandler = unreadableStoreHandler;
         _disposed = false;
     }
 
@@ -92,10 +99,23 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
     public void Save()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        Exception? first = null;
 
         foreach (var store in _stores.Values)
         {
-            ((IStore)store).Sync();
+            try
+            {
+                ((IStore)store).Sync();
+            }
+            catch (Exception exception)
+            {
+                first ??= exception;
+            }
+        }
+
+        if (first is not null)
+        {
+            throw first;
         }
     }
 
@@ -107,13 +127,26 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         }
 
         _disposed = true;
+        Exception? first = null;
 
         foreach (var store in _stores.Values)
         {
-            ((IStore)store).Dispose();
+            try
+            {
+                ((IStore)store).Dispose();
+            }
+            catch (Exception exception)
+            {
+                first ??= exception;
+            }
         }
 
         _stores.Clear();
+
+        if (first is not null)
+        {
+            throw first;
+        }
     }
 
     private TStore GetStore<TStore>(string name, Func<string, IEntrySigner, TStore> create) where TStore : class
@@ -126,21 +159,52 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
             return existing as TStore ?? throw new InvalidOperationException($"'{name}' is already open as a {existing.GetType().Name}.");
         }
 
-        var signer = _protection.CreateSigner(name);
+        var path = Path.Combine(_directory, name + Extension);
         TStore store;
 
         try
         {
-            store = create(Path.Combine(_directory, name + Extension), signer);
+            store = Create(name, path, create);
+        }
+        catch (Exception exception) when (_unreadableStoreHandler is not null && exception is not (IOException or UnauthorizedAccessException))
+        {
+            Quarantine(path);
+            _unreadableStoreHandler(name, exception);
+            store = Create(name, path, create);
+        }
+
+        _stores.Add(name, store);
+        return store;
+    }
+
+    private TStore Create<TStore>(string name, string path, Func<string, IEntrySigner, TStore> create)
+    {
+        var signer = _protection.CreateSigner(name);
+
+        try
+        {
+            return create(path, signer);
         }
         catch
         {
             signer.Dispose();
             throw;
         }
+    }
 
-        _stores.Add(name, store);
-        return store;
+    private static void Quarantine(string path)
+    {
+        var quarantined = path + ".corrupt";
+
+        if (File.Exists(quarantined))
+        {
+            File.Delete(quarantined);
+        }
+
+        if (File.Exists(path))
+        {
+            File.Move(path, quarantined);
+        }
     }
 
     private static void ValidateName(string name)
