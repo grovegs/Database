@@ -1,4 +1,6 @@
 ﻿using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using GroveGames.Database.Storage;
 using GroveGames.Serialization;
 
@@ -36,7 +38,7 @@ public sealed class ProtectionTests : IDisposable
 
         Assert.Equal(120, reopened.GetDocument<ProtectedWallet>("wallet").Value.Gold);
         Assert.Equal(3, reopened.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id).Get(1).Count);
-        Assert.Equal(2, File.ReadAllBytes(PathOf("wallet"))[4]);
+        Assert.Equal(3, File.ReadAllBytes(PathOf("wallet"))[4]);
     }
 
     [Fact]
@@ -135,19 +137,125 @@ public sealed class ProtectionTests : IDisposable
     }
 
     [Fact]
-    public void Reopen_PlainFileWithKey_ProtectsIt()
+    public void Reopen_PlainFileWithKey_ThrowsDatabaseTamperedException()
+    {
+        using (var database = Open(DatabaseProtection.None))
+        {
+            database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 999_999 });
+        }
+
+        using var reopened = Open(DatabaseProtection.TamperCheck(s_key));
+
+        Assert.Throws<DatabaseTamperedException>(() => reopened.GetDocument<ProtectedWallet>("wallet"));
+    }
+
+    [Fact]
+    public void Reopen_EntryRemovedFromMiddle_ThrowsDatabaseTamperedException()
+    {
+        WriteThreeItems();
+        var contents = File.ReadAllBytes(PathOf("items"));
+        var first = EntryLength(contents, 8);
+        var second = EntryLength(contents, 8 + first);
+        File.WriteAllBytes(PathOf("items"), [.. contents.AsSpan(0, 8 + first), .. contents.AsSpan(8 + first + second)]);
+
+        using var reopened = Open(DatabaseProtection.TamperCheck(s_key));
+
+        Assert.Throws<DatabaseTamperedException>(() => reopened.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id));
+    }
+
+    [Fact]
+    public void Reopen_EntriesReordered_ThrowsDatabaseTamperedException()
+    {
+        WriteThreeItems();
+        var contents = File.ReadAllBytes(PathOf("items"));
+        var first = EntryLength(contents, 8);
+        var second = EntryLength(contents, 8 + first);
+        File.WriteAllBytes(PathOf("items"), [.. contents.AsSpan(0, 8), .. contents.AsSpan(8 + first, second), .. contents.AsSpan(8, first), .. contents.AsSpan(8 + first + second)]);
+
+        using var reopened = Open(DatabaseProtection.TamperCheck(s_key));
+
+        Assert.Throws<DatabaseTamperedException>(() => reopened.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id));
+    }
+
+    [Fact]
+    public void Reopen_ChainedEntriesReframedAsVersionTwo_ThrowsDatabaseTamperedException()
+    {
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            var wallet = database.GetDocument<ProtectedWallet>("wallet");
+            wallet.Set(new ProtectedWallet { Gold = 1 });
+            wallet.Set(new ProtectedWallet { Gold = 2 });
+        }
+
+        var contents = File.ReadAllBytes(PathOf("wallet"));
+        var reframed = new List<byte>(contents.AsSpan(0, 8).ToArray());
+        reframed[4] = 2;
+        var previousTag = new byte[16];
+        var position = 8;
+
+        while (position < contents.Length)
+        {
+            var payloadLength = BinaryPrimitives.ReadInt32LittleEndian(contents.AsSpan(position));
+            var tag = contents.AsSpan(position + 9 + payloadLength, 16).ToArray();
+            byte[] signed = [.. previousTag, .. contents.AsSpan(position + 4, payloadLength + 1)];
+            var entry = new byte[4 + signed.Length + 4];
+            BinaryPrimitives.WriteInt32LittleEndian(entry, signed.Length - 1);
+            signed.CopyTo(entry.AsSpan(4));
+            BinaryPrimitives.WriteUInt32LittleEndian(entry.AsSpan(4 + signed.Length), Crc32.Compute(signed));
+            reframed.AddRange(entry);
+            reframed.AddRange(tag);
+            previousTag = tag;
+            position += 9 + payloadLength + 16;
+        }
+
+        File.WriteAllBytes(PathOf("wallet"), [.. reframed]);
+        using var reopened = Open(DatabaseProtection.TamperCheck(s_key));
+
+        Assert.Throws<DatabaseTamperedException>(() => reopened.GetDocument<ProtectedWallet>("wallet"));
+    }
+
+    [Fact]
+    public void Reopen_UnchainedVersionTwoFile_ReadsAndUpgradesIt()
+    {
+        Directory.CreateDirectory(_directory);
+        var payload = new ByteBuffer();
+        new MessagePackSerializer().Serialize(new ProtectedWallet { Gold = 42 }, payload);
+        var signed = new byte[payload.Length + 1];
+        signed[0] = 1;
+        payload.WrittenSpan.CopyTo(signed.AsSpan(1));
+        using var derivation = new HMACSHA256(s_key);
+        using var hmac = new HMACSHA256(derivation.ComputeHash(Encoding.UTF8.GetBytes("wallet")));
+        var entry = new byte[4 + signed.Length + 4 + 16];
+        BinaryPrimitives.WriteInt32LittleEndian(entry, payload.Length);
+        signed.CopyTo(entry.AsSpan(4));
+        BinaryPrimitives.WriteUInt32LittleEndian(entry.AsSpan(4 + signed.Length), Crc32.Compute(signed));
+        hmac.ComputeHash(signed).AsSpan(0, 16).CopyTo(entry.AsSpan(8 + signed.Length));
+        File.WriteAllBytes(PathOf("wallet"), [(byte)'G', (byte)'G', (byte)'D', (byte)'B', 2, 1, 0, 0, .. entry]);
+
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            Assert.Equal(42, database.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+        }
+
+        Assert.Equal(3, File.ReadAllBytes(PathOf("wallet"))[4]);
+        using var reopened = Open(DatabaseProtection.TamperCheck(s_key));
+        Assert.Equal(42, reopened.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+    }
+
+    [Fact]
+    public void Reopen_PlainFileWithKeyTrustingExistingFiles_ProtectsIt()
     {
         using (var database = Open(DatabaseProtection.None))
         {
             database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 75 });
         }
 
-        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key, true)))
         {
             Assert.Equal(75, database.GetDocument<ProtectedWallet>("wallet").Value.Gold);
         }
 
-        Assert.Equal(2, File.ReadAllBytes(PathOf("wallet"))[4]);
+        Assert.Equal(3, File.ReadAllBytes(PathOf("wallet"))[4]);
 
         using var withoutKey = Open(DatabaseProtection.None);
 
@@ -206,6 +314,20 @@ public sealed class ProtectionTests : IDisposable
     public void TamperCheck_ShortKey_ThrowsArgumentException()
     {
         Assert.Throws<ArgumentException>(() => DatabaseProtection.TamperCheck(new byte[15]));
+    }
+
+    private void WriteThreeItems()
+    {
+        using var database = Open(DatabaseProtection.TamperCheck(s_key));
+        var items = database.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id);
+        items.Upsert(new ProtectedItem { Id = 1, Count = 1 });
+        items.Upsert(new ProtectedItem { Id = 1, Count = 0 });
+        items.Upsert(new ProtectedItem { Id = 2, Count = 2 });
+    }
+
+    private static int EntryLength(byte[] contents, int start)
+    {
+        return 4 + 1 + BinaryPrimitives.ReadInt32LittleEndian(contents.AsSpan(start)) + 4 + 16;
     }
 
     private FileDatabase Open(DatabaseProtection protection)

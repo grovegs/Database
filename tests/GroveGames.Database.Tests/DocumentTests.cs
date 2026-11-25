@@ -114,6 +114,38 @@ public sealed class DocumentTests : IDisposable
         Assert.Equal("tr", audio.Language);
     }
 
+    [Fact]
+    public void Save_CompactionFails_KeepsLaterWrites()
+    {
+        using (var database = Open())
+        {
+            var document = database.GetDocument<FragileValue>("fragile");
+
+            for (var i = 0; i < 17; i++)
+            {
+                document.Set(new FragileValue { Gold = i });
+            }
+
+            FragileValueFormatter.FailWrites = true;
+
+            try
+            {
+                Assert.Throws<InvalidOperationException>(database.Save);
+            }
+            finally
+            {
+                FragileValueFormatter.FailWrites = false;
+            }
+
+            document.Set(new FragileValue { Gold = 99 });
+            database.Save();
+        }
+
+        using var reopened = Open();
+
+        Assert.Equal(99, reopened.GetDocument<FragileValue>("fragile").Value.Gold);
+    }
+
     private FileDatabase Open()
     {
         return new FileDatabase(_directory);
@@ -144,5 +176,38 @@ public sealed class DocumentAudioRenameVolume : IMigration<DocumentAudio>
     {
         Applied++;
         root.AsObject.Rename("volume", "master");
+    }
+}
+
+public sealed class FragileValue
+{
+    public long Gold;
+}
+
+[Formatter]
+public sealed class FragileValueFormatter : IFormatter<FragileValue>
+{
+    public static bool FailWrites;
+
+    public void Write<TWriter>(ref TWriter writer, FragileValue? value) where TWriter : struct, IFormatWriter
+    {
+        if (FailWrites)
+        {
+            throw new InvalidOperationException("The write failed.");
+        }
+
+        writer.WriteInt64(value?.Gold ?? 0);
+    }
+
+    public FragileValue? Read<TReader>(ref TReader reader) where TReader : struct, IFormatReader
+    {
+        return new FragileValue { Gold = reader.ReadInt64() };
+    }
+
+    public void Transcode<TReader, TWriter>(ref TReader reader, ref TWriter writer)
+        where TReader : struct, IFormatReader
+        where TWriter : struct, IFormatWriter
+    {
+        writer.WriteInt64(reader.ReadInt64());
     }
 }

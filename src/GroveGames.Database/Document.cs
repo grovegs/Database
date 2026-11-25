@@ -1,4 +1,5 @@
-﻿using GroveGames.Database.Storage;
+﻿using System.Buffers;
+using GroveGames.Database.Storage;
 using GroveGames.Serialization;
 
 namespace GroveGames.Database;
@@ -35,9 +36,7 @@ public sealed class Document<T> : IDocument<T>, IStore
 
     public void Set(T value)
     {
-        var payload = _file.BeginEntry(EntryKind.Value);
-        _serializer.Serialize(value, payload);
-        _file.CommitEntry();
+        WriteValue(value);
         _value = value;
         _entryCount++;
     }
@@ -57,24 +56,31 @@ public sealed class Document<T> : IDocument<T>, IStore
         Set(typed);
     }
 
+    void IStore.WriteJson(JsonSerializer serializer, IBufferWriter<byte> output)
+    {
+        serializer.Serialize(_value, output);
+    }
+
     void IStore.Sync()
     {
+        _file.Sync();
+
         if (_entryCount > CompactionThreshold)
         {
-            _file.BeginRewrite();
-            _serializer.Serialize(_value, _file.BeginEntry(EntryKind.Value));
-            _file.CommitEntry();
-            _file.CommitRewrite();
+            _file.Rewrite(this, static (_, document) => document.WriteValue(document._value));
             _entryCount = 1;
-            return;
         }
-
-        _file.Sync();
     }
 
     void IDisposable.Dispose()
     {
         _file.Dispose();
+    }
+
+    private void WriteValue(T value)
+    {
+        _serializer.Serialize(value, _file.BeginEntry(EntryKind.Value));
+        _file.CommitEntry();
     }
 
     private T Load()
@@ -103,18 +109,13 @@ public sealed class Document<T> : IDocument<T>, IStore
         var payload = _file.Contents.AsMemory(entries[latest].PayloadStart, entries[latest].PayloadLength);
         var value = _serializer.Deserialize<T>(payload) ?? new T();
 
-        if (PayloadVersion.Read(payload.Span) < Formatters.GetVersion<T>())
+        if (_serializer.ReadVersion(payload) < Formatters.GetVersion<T>())
         {
-            _file.BeginRewrite();
-            _serializer.Serialize(value, _file.BeginEntry(EntryKind.Value));
-            _file.CommitEntry();
-            _file.CommitRewrite();
+            _file.Rewrite((this, value), static (_, state) => state.Item1.WriteValue(state.value));
         }
         else if (entries.Count > CompactionThreshold)
         {
-            _file.BeginRewrite();
-            _file.CopyEntry(entries[latest]);
-            _file.CommitRewrite();
+            _file.Rewrite(entries[latest], static (file, entry) => file.CopyEntry(entry));
         }
         else
         {

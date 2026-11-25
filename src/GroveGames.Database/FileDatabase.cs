@@ -1,4 +1,6 @@
-﻿using GroveGames.Database.Storage;
+﻿using System.Buffers;
+using System.Runtime.ExceptionServices;
+using GroveGames.Database.Storage;
 using GroveGames.Serialization;
 
 namespace GroveGames.Database;
@@ -9,8 +11,9 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
     private readonly string _directory;
     private readonly MessagePackSerializer _serializer;
+    private readonly JsonSerializer _json;
     private readonly DatabaseProtection _protection;
-    private readonly Dictionary<string, object> _stores;
+    private readonly Dictionary<string, IStore> _stores;
     private readonly Action<string, Exception>? _unreadableStoreHandler;
     private bool _disposed;
 
@@ -42,8 +45,9 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         _directory = directory;
         _serializer = new MessagePackSerializer();
+        _json = new JsonSerializer();
         _protection = protection;
-        _stores = new Dictionary<string, object>(StringComparer.Ordinal);
+        _stores = new Dictionary<string, IStore>(StringComparer.Ordinal);
         _unreadableStoreHandler = unreadableStoreHandler;
         _disposed = false;
     }
@@ -65,7 +69,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
     public bool IsCollection(string name)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _stores.TryGetValue(name, out var store) && ((IStore)store).IsCollection;
+        return _stores.TryGetValue(name, out var store) && store.IsCollection;
     }
 
     public bool TryInspect(string name, out object? value)
@@ -74,7 +78,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         if (_stores.TryGetValue(name, out var store))
         {
-            value = ((IStore)store).Inspect();
+            value = store.Inspect();
             return true;
         }
 
@@ -92,7 +96,21 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
             return false;
         }
 
-        ((IStore)store).Write(value);
+        store.Write(value);
+        return true;
+    }
+
+    public bool TryWriteJson(string name, IBufferWriter<byte> output)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(output);
+
+        if (!_stores.TryGetValue(name, out var store))
+        {
+            return false;
+        }
+
+        store.WriteJson(_json, output);
         return true;
     }
 
@@ -105,7 +123,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         {
             try
             {
-                ((IStore)store).Sync();
+                store.Sync();
             }
             catch (Exception exception)
             {
@@ -115,7 +133,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         if (first is not null)
         {
-            throw first;
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 
@@ -133,7 +151,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         {
             try
             {
-                ((IStore)store).Dispose();
+                store.Dispose();
             }
             catch (Exception exception)
             {
@@ -145,11 +163,11 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         if (first is not null)
         {
-            throw first;
+            ExceptionDispatchInfo.Capture(first).Throw();
         }
     }
 
-    private TStore GetStore<TStore>(string name, Func<string, IEntrySigner, TStore> create) where TStore : class
+    private TStore GetStore<TStore>(string name, Func<string, IEntrySigner, TStore> create) where TStore : class, IStore
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateName(name);
@@ -177,7 +195,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         return store;
     }
 
-    private TStore Create<TStore>(string name, string path, Func<string, IEntrySigner, TStore> create)
+    private TStore Create<TStore>(string name, string path, Func<string, IEntrySigner, TStore> create) where TStore : class, IStore
     {
         var signer = _protection.CreateSigner(name);
 

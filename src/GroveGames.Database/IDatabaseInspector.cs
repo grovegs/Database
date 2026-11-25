@@ -1,4 +1,6 @@
-﻿namespace GroveGames.Database;
+﻿using System.Buffers;
+
+namespace GroveGames.Database;
 
 public interface IDatabaseInspector
 {
@@ -7,4 +9,5 @@ public interface IDatabaseInspector
     public bool IsCollection(string name);
     public bool TryInspect(string name, out object? value);
     public bool TryWrite(string name, object value);
+    public bool TryWriteJson(string name, IBufferWriter<byte> output);
 }
