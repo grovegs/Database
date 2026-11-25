@@ -68,7 +68,7 @@ database.Save();
 | `Save()` returns                          | Every change is on storage and also survives a power cut or OS crash             |
 | Crash in the middle of a write            | Only that write is lost; the torn entry is discarded when the file is next opened |
 
-`Save()` syncs every open file to storage and takes a few milliseconds, so call it at safe points such as pausing, quitting or after a purchase, not after every write.
+`Save()` syncs every open file to storage and takes a few milliseconds, so call it at safe points such as pausing, quitting or after a purchase, not after every write. If a file fails to sync, `Save()` and `Dispose()` still try every other file, then throw the first error.
 
 ### Tamper Protection
 

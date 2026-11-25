@@ -21,7 +21,6 @@ internal sealed class StoreFile : IDisposable
     private readonly IEntrySigner _signer;
     private readonly byte[] _chain;
     private readonly byte[] _rewriteChain;
-    private byte[] _scratch;
     private EntryKind _pendingKind;
     private FileStream _stream;
     private FileStream? _rewrite;
@@ -40,7 +39,6 @@ internal sealed class StoreFile : IDisposable
         _chain = chain;
         _rewriteChain = new byte[signer.TagLength];
         _payload = new ByteBuffer(256);
-        _scratch = new byte[256];
         _pendingKind = EntryKind.Value;
         _rewrite = null;
         _dirty = false;
@@ -128,36 +126,30 @@ internal sealed class StoreFile : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _payload.Reset();
+        _payload.Take(EntryPrefixLength);
         _pendingKind = kind;
         return _payload;
     }
 
     public void CommitEntry()
     {
-        var payload = _payload.WrittenSpan;
+        var payloadLength = _payload.Length - EntryPrefixLength;
         var tagLength = _signer.TagLength;
-        var length = EntryPrefixLength + payload.Length + ChecksumLength + tagLength;
-
-        if (_scratch.Length < length)
-        {
-            _scratch = new byte[Math.Max(length, _scratch.Length * 2)];
-        }
-
-        var entry = _scratch.AsSpan(0, length);
-        BinaryPrimitives.WriteInt32LittleEndian(entry, payload.Length);
+        _payload.Take(ChecksumLength + tagLength);
+        var entry = _payload.Slice(0, _payload.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(entry, payloadLength);
         entry[4] = (byte)_pendingKind;
-        payload.CopyTo(entry.Slice(EntryPrefixLength));
-        var signed = entry.Slice(4, payload.Length + 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(entry.Slice(EntryPrefixLength + payload.Length), Crc32.Compute(signed));
+        var signed = entry.Slice(4, payloadLength + 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(entry.Slice(EntryPrefixLength + payloadLength), Crc32.Compute(signed));
         var chain = _rewrite is null ? _chain : _rewriteChain;
-        var tag = entry.Slice(EntryPrefixLength + payload.Length + ChecksumLength);
+        var tag = entry.Slice(EntryPrefixLength + payloadLength + ChecksumLength, tagLength);
         _signer.Sign(chain, signed, tag);
         var stream = _rewrite ?? _stream;
         var start = stream.Position;
 
         try
         {
-            stream.Write(_scratch, 0, length);
+            _payload.WriteTo(stream);
         }
         catch
         {

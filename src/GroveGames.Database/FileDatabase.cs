@@ -1,4 +1,5 @@
-﻿using GroveGames.Database.Storage;
+﻿using System.Buffers;
+using GroveGames.Database.Storage;
 using GroveGames.Serialization;
 
 namespace GroveGames.Database;
@@ -9,6 +10,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
     private readonly string _directory;
     private readonly MessagePackSerializer _serializer;
+    private readonly JsonSerializer _json;
     private readonly DatabaseProtection _protection;
     private readonly Dictionary<string, IStore> _stores;
     private readonly Action<string, Exception>? _unreadableStoreHandler;
@@ -42,6 +44,7 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         _directory = directory;
         _serializer = new MessagePackSerializer();
+        _json = new JsonSerializer();
         _protection = protection;
         _stores = new Dictionary<string, IStore>(StringComparer.Ordinal);
         _unreadableStoreHandler = unreadableStoreHandler;
@@ -93,6 +96,20 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         }
 
         store.Write(value);
+        return true;
+    }
+
+    public bool TryWriteJson(string name, IBufferWriter<byte> output)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(output);
+
+        if (!_stores.TryGetValue(name, out var store))
+        {
+            return false;
+        }
+
+        store.WriteJson(_json, output);
         return true;
     }
 

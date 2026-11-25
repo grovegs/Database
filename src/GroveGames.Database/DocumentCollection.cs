@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System.Buffers;
+using System.Collections;
 using GroveGames.Database.Keys;
 using GroveGames.Database.Storage;
 using GroveGames.Serialization;
@@ -130,6 +131,11 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         }
 
         Upsert(typed);
+    }
+
+    void IStore.WriteJson(JsonSerializer serializer, IBufferWriter<byte> output)
+    {
+        serializer.Serialize(new List<T>(_items.Values), output);
     }
 
     void IStore.Sync()

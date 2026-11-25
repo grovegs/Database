@@ -1,11 +1,13 @@
-#if GROVEGAMES_DEVELOPERTOOLS
+﻿#if GROVEGAMES_DEVELOPERTOOLS
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using GroveGames.DeveloperTools;
 using GroveGames.DeveloperTools.Unity;
+using GroveGames.Serialization;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -277,9 +279,18 @@ namespace GroveGames.Database.Unity.DeveloperTools
 
         private void Copy(string name)
         {
-            if (_inspector!.TryInspect(name, out var value))
+            var json = new ByteBuffer();
+
+            try
             {
-                GUIUtility.systemCopyBuffer = DatabaseValueFormatter.Format(value);
+                if (_inspector!.TryWriteJson(name, json))
+                {
+                    GUIUtility.systemCopyBuffer = Encoding.UTF8.GetString(json.WrittenSpan);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"Failed to copy the database store '{name}': {exception.Message}");
             }
         }
 

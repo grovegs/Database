@@ -1,4 +1,5 @@
-﻿using GroveGames.Serialization;
+﻿using System.Text;
+using GroveGames.Serialization;
 
 namespace GroveGames.Database.Tests;
 
@@ -183,6 +184,44 @@ public sealed class FileDatabaseTests : IDisposable
         Assert.True(found);
         var items = Assert.IsAssignableFrom<IEnumerable<DatabaseItem>>(value);
         Assert.Equal(2, items.Count());
+    }
+
+    [Fact]
+    public void TryWriteJson_Document_WritesStoredFields()
+    {
+        using var database = Open();
+        database.GetDocument<DatabaseItem>("profile").Set(new DatabaseItem { Id = 3 });
+        var output = new ByteBuffer();
+
+        var found = database.TryWriteJson("profile", output);
+
+        Assert.True(found);
+        Assert.Equal("{\"id\":3}", Encoding.UTF8.GetString(output.WrittenSpan));
+    }
+
+    [Fact]
+    public void TryWriteJson_Collection_WritesItemsAsArray()
+    {
+        using var database = Open();
+        var collection = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+        collection.Upsert(new DatabaseItem { Id = 1 });
+        collection.Upsert(new DatabaseItem { Id = 2 });
+        var output = new ByteBuffer();
+
+        var found = database.TryWriteJson("items", output);
+
+        Assert.True(found);
+        Assert.Equal("[{\"id\":1},{\"id\":2}]", Encoding.UTF8.GetString(output.WrittenSpan));
+    }
+
+    [Fact]
+    public void TryWriteJson_UnopenedName_ReturnsFalse()
+    {
+        using var database = Open();
+        var output = new ByteBuffer();
+
+        Assert.False(database.TryWriteJson("missing", output));
+        Assert.Equal(0, output.Length);
     }
 
     [Fact]

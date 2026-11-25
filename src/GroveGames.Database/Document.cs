@@ -1,4 +1,5 @@
-﻿using GroveGames.Database.Storage;
+﻿using System.Buffers;
+using GroveGames.Database.Storage;
 using GroveGames.Serialization;
 
 namespace GroveGames.Database;
@@ -53,6 +54,11 @@ public sealed class Document<T> : IDocument<T>, IStore
         }
 
         Set(typed);
+    }
+
+    void IStore.WriteJson(JsonSerializer serializer, IBufferWriter<byte> output)
+    {
+        serializer.Serialize(_value, output);
     }
 
     void IStore.Sync()
