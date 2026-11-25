@@ -72,6 +72,26 @@ public sealed class DocumentTests : IDisposable
     }
 
     [Fact]
+    public void Save_ManySets_CompactsWithoutReopening()
+    {
+        var path = Path.Combine(_directory, "settings.db");
+        using var database = Open();
+        var settings = database.GetDocument<DocumentSettings>("settings");
+
+        for (var i = 0; i < 50; i++)
+        {
+            settings.Set(new DocumentSettings { Volume = i });
+        }
+
+        var before = new FileInfo(path).Length;
+        database.Save();
+        settings.Set(new DocumentSettings { Volume = 50 });
+
+        Assert.True(new FileInfo(path).Length < before / 10);
+        Assert.Equal(50f, settings.Value.Volume);
+    }
+
+    [Fact]
     public void Reopen_OlderVersionValue_IsMigratedOnce()
     {
         using (var database = Open())

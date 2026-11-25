@@ -268,7 +268,7 @@ namespace GroveGames.Database.Unity.Editor.Tests
             public string? Name;
             public int? Limit;
 
-            [Ignore]
+            [GroveGames.Serialization.Ignore]
             public int Hidden;
 
             public string Title => _title;
