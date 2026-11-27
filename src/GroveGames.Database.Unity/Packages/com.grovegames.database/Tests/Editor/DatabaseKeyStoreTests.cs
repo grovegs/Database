@@ -32,10 +32,10 @@ namespace GroveGames.Database.Unity.Editor.Tests
         public void CreateProtection_KeyStored_ReadsItWithoutWriting()
         {
             var storage = new FakeSecureStorage();
-            DatabaseKeyStore.CreateProtection(storage);
+            CreateProtection(storage);
             var writes = storage.WriteCount;
 
-            DatabaseKeyStore.CreateProtection(storage);
+            CreateProtection(storage);
 
             Assert.That(writes, Is.EqualTo(1));
             Assert.That(storage.WriteCount, Is.EqualTo(1));
@@ -45,10 +45,10 @@ namespace GroveGames.Database.Unity.Editor.Tests
         public void CreateProtection_ReadFailsOnce_RetriesAndKeepsTheKey()
         {
             var storage = new FakeSecureStorage();
-            DatabaseKeyStore.CreateProtection(storage);
+            CreateProtection(storage);
             storage.FailedReads = 1;
 
-            DatabaseKeyStore.CreateProtection(storage);
+            CreateProtection(storage);
 
             Assert.That(storage.WriteCount, Is.EqualTo(1));
         }
@@ -57,11 +57,11 @@ namespace GroveGames.Database.Unity.Editor.Tests
         public void CreateProtection_ReadKeepsFailing_ReplacesTheKeyAndKeepsTheSaves()
         {
             var storage = new FakeSecureStorage();
-            Save(DatabaseKeyStore.CreateProtection(storage), 7);
+            Save(CreateProtection(storage), 7);
             storage.FailedReads = 2;
             LogAssert.Expect(LogType.Warning, new Regex("could not be read"));
 
-            var protection = DatabaseKeyStore.CreateProtection(storage);
+            var protection = CreateProtection(storage);
 
             Assert.That(storage.WriteCount, Is.EqualTo(2));
             Assert.That(Load(protection), Is.EqualTo(7));
@@ -71,15 +71,49 @@ namespace GroveGames.Database.Unity.Editor.Tests
         public void CreateProtection_KeyCannotBeStored_KeepsTheSaves()
         {
             var storage = new FakeSecureStorage();
-            Save(DatabaseKeyStore.CreateProtection(storage), 7);
+            Save(CreateProtection(storage), 7);
             storage.FailedReads = 2;
             storage.IsWriteRejected = true;
             LogAssert.Expect(LogType.Warning, new Regex("could not be read"));
             LogAssert.Expect(LogType.Error, new Regex("could not be stored"));
 
-            var protection = DatabaseKeyStore.CreateProtection(storage);
+            var protection = CreateProtection(storage);
 
             Assert.That(Load(protection), Is.EqualTo(7));
+        }
+
+        [Test]
+        public void CreateProtection_KeyNotStoredThenOldKeyRead_TrustsAgainAndKeepsTheSaves()
+        {
+            var storage = new FakeSecureStorage();
+            Save(CreateProtection(storage), 7);
+            storage.FailedReads = 2;
+            storage.IsWriteRejected = true;
+            LogAssert.Expect(LogType.Warning, new Regex("could not be read"));
+            LogAssert.Expect(LogType.Error, new Regex("could not be stored"));
+            Save(CreateProtection(storage), 8);
+            storage.IsWriteRejected = false;
+
+            var protection = CreateProtection(storage);
+
+            Assert.That(Load(protection), Is.EqualTo(8));
+        }
+
+        [Test]
+        public void CreateProtection_KeyFoundWithoutMarker_DoesNotTrust()
+        {
+            var storage = new FakeSecureStorage();
+            Save(CreateProtection(storage), 7);
+            DatabaseKeyStore.DeleteTrustMarker(_directory);
+            var trusted = CreateProtection(storage);
+
+            Assert.That(trusted, Is.Not.Null);
+            Assert.That(File.Exists(Path.Combine(_directory, ".trust")), Is.False);
+        }
+
+        private DatabaseProtection CreateProtection(FakeSecureStorage storage)
+        {
+            return DatabaseKeyStore.CreateProtection(storage, _directory, out _);
         }
 
         private void Save(DatabaseProtection protection, int id)

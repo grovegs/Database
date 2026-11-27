@@ -1,7 +1,9 @@
 using System;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace GroveGames.Database.Unity.Editor.Tests
 {
@@ -68,11 +70,79 @@ namespace GroveGames.Database.Unity.Editor.Tests
             Assert.That(database.Saves, Is.EqualTo(0));
         }
 
+        [Test]
+        public void Tick_PastTheInterval_Saves()
+        {
+            var database = new CountingDatabase();
+
+            using (var autoSave = new DatabaseAutoSave(database, 10f))
+            {
+                autoSave.Tick(6f);
+                autoSave.Tick(6f);
+                autoSave.Tick(6f);
+            }
+
+            Assert.That(database.Saves, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Tick_WhileUnfocused_DoesNotSave()
+        {
+            var database = new CountingDatabase();
+
+            using (var autoSave = new DatabaseAutoSave(database, 10f))
+            {
+                s_invokeFocusChanged.Invoke(null, new object[] { false });
+                autoSave.Tick(20f);
+            }
+
+            Assert.That(database.Saves, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Tick_IntervalZero_NeverSaves()
+        {
+            var database = new CountingDatabase();
+
+            using (var autoSave = new DatabaseAutoSave(database, 0f))
+            {
+                autoSave.Tick(1000f);
+            }
+
+            Assert.That(database.Saves, Is.Zero);
+        }
+
+        [Test]
+        public void FocusLost_SaveThrows_LogsAndKeepsOtherHandlers()
+        {
+            var database = new CountingDatabase { IsThrowing = true };
+            var otherHandlerRan = false;
+            Action<bool> other = _ => otherHandlerRan = true;
+            LogAssert.Expect(LogType.Exception, new Regex("disk full"));
+
+            using (new DatabaseAutoSave(database))
+            {
+                Application.focusChanged += other;
+
+                try
+                {
+                    s_invokeFocusChanged.Invoke(null, new object[] { false });
+                }
+                finally
+                {
+                    Application.focusChanged -= other;
+                }
+            }
+
+            Assert.That(otherHandlerRan, Is.True);
+        }
+
         private sealed class CountingDatabase : IDatabase
         {
             private int _saves;
 
             public int Saves => _saves;
+            public bool IsThrowing { get; set; }
 
             public IDocument<T> GetDocument<T>(string name) where T : new()
             {
@@ -86,6 +156,11 @@ namespace GroveGames.Database.Unity.Editor.Tests
 
             public void Save()
             {
+                if (IsThrowing)
+                {
+                    throw new System.IO.IOException("disk full");
+                }
+
                 _saves++;
             }
 

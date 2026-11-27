@@ -56,7 +56,7 @@ namespace GroveGames.Database.Unity
 
         public string Text => Format(Value);
 
-        private bool CanEditChildren => Value != null && (!Value.GetType().IsValueType || IsEditable);
+        private bool CanEditChildren => Value != null && IsEditable;
 
         private DatabaseValueNode(DatabaseValueNode? parent, string label, string path, Type declaredType, object? value, bool isEditable, Action<object?>? assign)
         {
@@ -129,7 +129,7 @@ namespace GroveGames.Database.Unity
                 try
                 {
                     value = Enum.Parse(type, text, true);
-                    return true;
+                    return type.IsDefined(typeof(FlagsAttribute), false) || Enum.IsDefined(type, value);
                 }
                 catch (ArgumentException)
                 {

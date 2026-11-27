@@ -51,6 +51,8 @@ namespace GroveGames.Database.Unity.Editor
 
                     container.Add(new PropertyField(serializedObject.FindProperty("_folderName"), "Folder Name"));
                     container.Add(new PropertyField(serializedObject.FindProperty("_tamperProtection"), "Tamper Protection"));
+                    container.Add(new PropertyField(serializedObject.FindProperty("_autoSaveInterval"), "Auto Save Interval"));
+                    container.Add(new HelpBox("Saves sync to disk when the app loses focus, when it quits, and every Auto Save Interval seconds while it is focused. Set 0 to turn off the timed save.", HelpBoxMessageType.Info));
                     container.Add(new HelpBox("Tamper Protection rejects saves edited outside the game. Its key is created on first use and kept in SecureStorage (Keychain on iOS, Keystore on Android).", HelpBoxMessageType.Info));
 
                     rootElement.Add(container);

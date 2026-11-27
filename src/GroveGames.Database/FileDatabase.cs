@@ -105,6 +105,20 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         return true;
     }
 
+    public bool TryWriteItem(string name, int index, object value)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (!_stores.TryGetValue(name, out var store))
+        {
+            return false;
+        }
+
+        store.WriteItem(index, value);
+        return true;
+    }
+
     public bool TryWriteJson(string name, IBufferWriter<byte> output)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

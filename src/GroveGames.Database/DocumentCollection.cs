@@ -133,6 +133,42 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         Upsert(typed);
     }
 
+    void IStore.WriteItem(int index, object value)
+    {
+        if (value is not T typed)
+        {
+            throw new ArgumentException($"The value must be a {typeof(T).Name}.", nameof(value));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, _items.Count - 1);
+        var position = 0;
+        var previousKey = default(TKey)!;
+
+        foreach (var key in _items.Keys)
+        {
+            if (position++ == index)
+            {
+                previousKey = key;
+                break;
+            }
+        }
+
+        var newKey = _keySelector(typed);
+
+        if (!EqualityComparer<TKey>.Default.Equals(previousKey, newKey))
+        {
+            if (_items.ContainsKey(newKey))
+            {
+                throw new InvalidOperationException($"Another item already has the key {newKey}.");
+            }
+
+            Remove(previousKey);
+        }
+
+        Upsert(typed);
+    }
+
     void IStore.WriteJson(JsonSerializer serializer, IBufferWriter<byte> output)
     {
         serializer.Serialize(new List<T>(_items.Values), output);

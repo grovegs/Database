@@ -58,15 +58,18 @@ database.Save();
 - **`GetDocument`** opens a single value. `Value` is a new `T` until something is stored.
 - **Changed in place:** after changing an object you already stored, call `Upsert` or `Set` with it again to store the change.
 - **Opening a name twice** returns the same instance.
+- **Names:** ASCII letters, digits, `_`, `-` and `.`. A name that differs from an open store only in case is rejected, since some file systems would give both the same file.
+- **String keys** must be valid UTF-16; a lone surrogate is rejected, because UTF-8 cannot store it and two keys could collide.
+- **`Set(null)`** stores a new `T`, the same value a reopen would give.
 - **Not thread-safe:** use a database from one thread.
 
 ### Durability
 
-| Event                                     | What is kept                                                                       |
-| ----------------------------------------- | ---------------------------------------------------------------------------------- |
-| The call to `Upsert`, `Remove` or `Set` returns | The change survives the app crashing, being force-quit or being killed by the OS |
-| `Save()` returns                          | Every change is on storage and also survives a power cut or OS crash             |
-| Crash in the middle of a write            | Only that write is lost; the torn entry is discarded when the file is next opened |
+| Event                                           | What is kept                                                                      |
+| ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| The call to `Upsert`, `Remove` or `Set` returns | The change survives the app crashing, being force-quit or being killed by the OS  |
+| `Save()` returns                                | Every change is on storage and also survives a power cut or OS crash              |
+| Crash in the middle of a write                  | Only that write is lost; the torn entry is discarded when the file is next opened |
 
 `Save()` syncs every open file to storage and takes a few milliseconds, so call it at safe points such as pausing, quitting or after a purchase, not after every write. If a file fails to sync, `Save()` and `Dispose()` still try every other file, then throw the first error.
 
@@ -83,8 +86,9 @@ Without it, the database uses `DatabaseProtection.None`.
 - **What it does:** every entry gets an HMAC-SHA256 tag that also covers the entry before it, so entries can't be edited, removed from the middle, reordered or repeated. Each file uses its own key derived from your key and the file's name, so an entry or a file copied from another store is rejected too. Data stays readable; this detects editing, it does not hide data.
 - **What it can't detect:** restoring an older copy of a whole file, or cutting the last entries off a file, which looks the same as a crash during a write. Each value is checked, but the file is not compared against anything outside the device. Files written by releases before chained tags (header version 2) are still accepted once and then upgraded, so entries of such a file kept from before the upgrade can be removed or reordered.
 - **On a mismatch:** opening a document or collection throws `DatabaseTamperedException`, and the game decides what to do. A torn last write is still trimmed silently, as without a key.
-- **Existing files:** a file written without a key is rejected with `DatabaseTamperedException` when it is opened with one, since anyone could write an unprotected file. Pass `DatabaseProtection.TamperCheck(key, trustExistingFiles: true)` once to sign files you trust, such as when turning protection on for existing players. A protected file cannot be opened without its key.
-- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing on .NET.
+- **Unreadable stores:** with an `unreadableStoreHandler`, any store that fails to open for a reason other than an IO error is moved aside and opened empty. Every moved copy is kept: `{name}.db.corrupt`, then `{name}.db.corrupt.1` and so on, so a later build can recover it. Besides tampering, this covers a value from a newer build, a migration that throws, a formatter that is missing, and a collection whose key type changed, which the file header records.
+- **Existing files:** a file written without a key is rejected with `DatabaseTamperedException` when it is opened with one, since anyone could write an unprotected file. Pass `DatabaseProtection.TamperCheck(key, trustExistingFiles: true)` once to sign files you trust, such as when turning protection on for existing players. Every store file in the folder is signed again when the database opens, including stores the game does not open that session. A protected file cannot be opened without its key.
+- **Key:** at least 16 bytes. Use a random key per install, stored in the platform's secure storage. A protected write costs about 0.4 µs more and allocates nothing, on .NET and on Mono and IL2CPP, because the HMAC is computed in managed code.
 
 ### Storage
 
@@ -95,6 +99,8 @@ Each document or collection is one file, `{name}.db`, in the database directory:
 - **Compaction:** if most of a file is overwritten or removed entries, it is rewritten into a temporary file, synced, and swapped in atomically. If compaction fails, the store keeps writing to its file and the next save tries again. A leftover temporary file from an interrupted compaction is removed on the next open.
 - **Migrations:** values written by an older version of a type are migrated when the file is opened, and the file is then rewritten the same way with the migrated values, so each value is migrated only once.
 - **New files:** creating or replacing a file also syncs its folder, so a new file can't disappear after a power cut.
+- **Syncing on Apple platforms:** files are synced with `F_FULLFSYNC` on a descriptor opened by path, because IL2CPP's file handles are not descriptors. Elsewhere, or if that fails, a plain `fsync` is used.
+- **Growth:** every change appends an entry, so a file grows until compaction on open or in `Save()`. Save regularly; the Unity auto-save does it on a timer.
 
 ## Unity
 
@@ -102,10 +108,10 @@ Install the cores through [NuGetForUnity](https://github.com/GlitchEnzo/NuGetFor
 
 ```json
 {
-  "dependencies": {
-    "com.grovegames.database": "https://github.com/grovegs/Database.git?path=src/GroveGames.Database.Unity/Packages/com.grovegames.database",
-    "com.grovegames.securestorage": "https://github.com/grovegs/SecureStorage.git?path=src/GroveGames.SecureStorage.Unity/Packages/com.grovegames.securestorage"
-  }
+    "dependencies": {
+        "com.grovegames.database": "https://github.com/grovegs/Database.git?path=src/GroveGames.Database.Unity/Packages/com.grovegames.database",
+        "com.grovegames.securestorage": "https://github.com/grovegs/SecureStorage.git?path=src/GroveGames.SecureStorage.Unity/Packages/com.grovegames.securestorage"
+    }
 }
 ```
 
@@ -113,13 +119,13 @@ If stored types have Unity members such as `Vector3` or `Color`, also install [`
 
 ### Settings
 
-`Project Settings > GroveGames > Database` sets the folder name, `Database` by default. The database is stored in `Application.persistentDataPath` under that folder. The settings are kept in `Assets/Settings/GroveGames/DatabaseSettings.asset` and registered as a preloaded asset in Player Settings, so every build profile ships them. An asset left in the old `Assets/Settings/Resources/GroveGames/` folder is moved there automatically.
+`Project Settings > GroveGames > Database` sets the folder name, `Database` by default. It must be a single folder name; an empty or nested name falls back to `Database`. The database is stored in `Application.persistentDataPath` under that folder. The settings are kept in `Assets/Settings/GroveGames/DatabaseSettings.asset` and registered as a preloaded asset in Player Settings, so every build profile ships them. An asset left in the old `Assets/Settings/Resources/GroveGames/` folder is moved there automatically.
 
 ### Tamper Protection in Unity
 
 Turn on **Tamper Protection** in `Project Settings > GroveGames > Database`, or call `SetTamperProtection(true)` on the builder. Nothing else is needed: on first use the package creates a random 32-byte key for the install and keeps it in SecureStorage, the Keychain on iOS and the Keystore on Android.
 
-The key never leaves the device, but the app's files move to a new device when a backup is restored. When the key had to be created and protected files already exist, those files are trusted once and signed with the new key, so a player who changes phones keeps their saves. If the key cannot be stored, the database logs an error and opens without protection.
+The key never leaves the device, but the app's files move to a new device when a backup is restored. When the key had to be created and protected files already exist, every store file is trusted and signed with the new key, so a player who changes phones keeps their saves. While that happens a `.trust` marker sits in the database folder; it is removed once the key is stored. If the key cannot be stored, or the app is killed first, the next launch trusts and signs the files again with the key it finds, so no save is lost to a key that was not kept. Anyone who can write to the app's files could create that marker to make edited files trusted once, which is the limit of this protection.
 
 ### Overriding Settings in Code
 
@@ -138,12 +144,14 @@ private static void ConfigureDatabase(IDatabaseBuilder database)
 
 ### Saving Automatically
 
-`DatabaseAutoSave` calls `Save()` whenever the app loses focus and when it quits. On iOS and Android the app loses focus as it goes to the background, so changes are synced before the OS can kill it:
+`DatabaseAutoSave` calls `Save()` whenever the app loses focus and when it quits, and, while the app is focused, every `Auto Save Interval` seconds (60 by default; 0 turns the timer off). On iOS and Android the app loses focus as it goes to the background, so changes are synced before the OS can kill it. A failing save is logged and does not stop other handlers of the Unity event:
 
 ```csharp
 var database = new FileDatabase(Path.Combine(Application.persistentDataPath, UnityDatabaseSettings.GetOrCreate().FolderName));
-var autoSave = new DatabaseAutoSave(database);
+var autoSave = new DatabaseAutoSave(database, UnityDatabaseSettings.GetOrCreate().AutoSaveInterval);
 ```
+
+Call `autoSave.Tick(Time.unscaledDeltaTime)` every frame for the timed save; `AddDatabase()` does this for you.
 
 Dispose `autoSave` before disposing the database.
 

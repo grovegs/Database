@@ -57,6 +57,11 @@ public sealed class Document<T> : IDocument<T>, IStore
         Set(typed);
     }
 
+    void IStore.WriteItem(int index, object value)
+    {
+        throw new InvalidOperationException("A document has no items.");
+    }
+
     void IStore.WriteJson(JsonSerializer serializer, IBufferWriter<byte> output)
     {
         serializer.Serialize(_value, output);

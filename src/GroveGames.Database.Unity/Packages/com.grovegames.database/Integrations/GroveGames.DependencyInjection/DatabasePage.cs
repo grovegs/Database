@@ -237,7 +237,8 @@ namespace GroveGames.Database.Unity.DeveloperTools
                 foreach (var item in items)
                 {
                     var label = "[" + index.ToString(CultureInfo.InvariantCulture) + "]";
-                    var node = DatabaseValueNode.CreateRoot(label, name + "/" + label, item, changed => Write(name, changed));
+                    var itemIndex = index;
+                    var node = DatabaseValueNode.CreateRoot(label, name + "/" + label, item, changed => WriteItem(name, itemIndex, changed));
                     card.Add(_valueView.Create(node));
                     index++;
                 }
@@ -274,6 +275,23 @@ namespace GroveGames.Database.Unity.DeveloperTools
             catch (Exception exception)
             {
                 Debug.LogError($"Failed to write the database store '{name}': {exception.Message}");
+            }
+        }
+
+        private void WriteItem(string name, int index, object? value)
+        {
+            if (value == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _inspector!.TryWriteItem(name, index, value);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"Failed to write item {index} of the database store '{name}', so what this page shows may differ from the saved data until it is reopened: {exception.Message}");
             }
         }
 

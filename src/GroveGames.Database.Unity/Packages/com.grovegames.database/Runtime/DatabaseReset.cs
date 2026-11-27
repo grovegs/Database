@@ -77,11 +77,26 @@ namespace GroveGames.Database.Unity
                 return;
             }
 
+            // The marker goes first, so a reset that fails partway is not applied again over the next session's progress.
+            try
+            {
+                File.Delete(GetMarkerPath(directory));
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"Failed to delete the database reset marker, so the reset is skipped: {exception.Message}");
+                return;
+            }
+
             try
             {
                 if (names.Contains(AllStores))
                 {
-                    if (Directory.Exists(directory))
+                    if (IsPersistentDataPath(directory))
+                    {
+                        Debug.LogError($"Refusing to delete {directory}, because it is the app's whole data folder rather than a database folder");
+                    }
+                    else if (Directory.Exists(directory))
                     {
                         Directory.Delete(directory, true);
                     }
@@ -98,8 +113,6 @@ namespace GroveGames.Database.Unity
                         }
                     }
                 }
-
-                File.Delete(GetMarkerPath(directory));
             }
             catch (Exception exception)
             {
@@ -125,6 +138,12 @@ namespace GroveGames.Database.Unity
             {
                 Debug.LogError($"Failed to write the database reset marker: {exception.Message}");
             }
+        }
+
+        private static bool IsPersistentDataPath(string directory)
+        {
+            var separators = new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+            return string.Equals(Path.GetFullPath(directory).TrimEnd(separators), Path.GetFullPath(Application.persistentDataPath).TrimEnd(separators), StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetMarkerPath(string directory)

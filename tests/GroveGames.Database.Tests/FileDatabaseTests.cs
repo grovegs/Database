@@ -393,6 +393,32 @@ public sealed class FileDatabaseTests : IDisposable
         Assert.NotNull(reopened.GetDocument<DatabaseItem>("item").Value);
     }
 
+    [Fact]
+    public void TryWriteItem_KeyChanged_MovesTheItem()
+    {
+        using var database = Open();
+        var items = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+        items.Upsert(new DatabaseItem { Id = 1 });
+
+        database.TryWriteItem("items", 0, new DatabaseItem { Id = 5 });
+
+        Assert.False(items.Contains(1));
+        Assert.True(items.Contains(5));
+        Assert.Single(items);
+    }
+
+    [Fact]
+    public void TryWriteItem_KeyTakenByAnotherItem_Throws()
+    {
+        using var database = Open();
+        var items = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+        items.Upsert(new DatabaseItem { Id = 1 });
+        items.Upsert(new DatabaseItem { Id = 2 });
+
+        Assert.Throws<InvalidOperationException>(() => database.TryWriteItem("items", 0, new DatabaseItem { Id = 2 }));
+        Assert.Equal(2, items.Count);
+    }
+
     private FileDatabase Open()
     {
         return new FileDatabase(_directory);

@@ -9,5 +9,6 @@ public interface IDatabaseInspector
     public bool IsCollection(string name);
     public bool TryInspect(string name, out object? value);
     public bool TryWrite(string name, object value);
+    public bool TryWriteItem(string name, int index, object value);
     public bool TryWriteJson(string name, IBufferWriter<byte> output);
 }
