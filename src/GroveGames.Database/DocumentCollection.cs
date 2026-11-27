@@ -24,7 +24,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         _keySelector = keySelector;
         _keyCodec = KeyCodecs.Create<TKey>();
         _items = [];
-        _file = StoreFile.Open(path, StoreKind.Collection, signer);
+        _file = StoreFile.Open(path, StoreKind.Collection, _keyCodec.KeyType, signer);
 
         try
         {
@@ -128,6 +128,44 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
                 Remove(pair.Key);
                 break;
             }
+        }
+
+        Upsert(typed);
+    }
+
+    void IStore.WriteItem(int index, object value)
+    {
+        if (value is not T typed)
+        {
+            throw new ArgumentException($"The value must be a {typeof(T).Name}.", nameof(value));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, _items.Count - 1);
+        var position = 0;
+        var previousKey = default(TKey)!;
+
+        foreach (var key in _items.Keys)
+        {
+            if (position++ == index)
+            {
+                previousKey = key;
+                break;
+            }
+        }
+
+        var newKey = _keySelector(typed);
+
+        if (!EqualityComparer<TKey>.Default.Equals(previousKey, newKey))
+        {
+            if (_items.ContainsKey(newKey))
+            {
+                throw new InvalidOperationException($"Another item already has the key {newKey}.");
+            }
+
+            Upsert(typed);
+            Remove(previousKey);
+            return;
         }
 
         Upsert(typed);

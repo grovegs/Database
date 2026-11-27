@@ -149,7 +149,18 @@ namespace GroveGames.Database.Unity
                     continue;
                 }
 
-                AppendMember(builder, property.Name, property.GetValue(value), depth, ref count);
+                object? member;
+
+                try
+                {
+                    member = property.GetValue(value);
+                }
+                catch (Exception exception)
+                {
+                    member = "<" + (exception.InnerException ?? exception).GetType().Name + ">";
+                }
+
+                AppendMember(builder, property.Name, member, depth, ref count);
             }
 
             if (count > 0)

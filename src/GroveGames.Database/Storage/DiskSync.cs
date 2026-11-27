@@ -1,5 +1,4 @@
 ﻿using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 
 namespace GroveGames.Database.Storage;
 
@@ -15,7 +14,8 @@ internal static class DiskSync
     {
         stream.Flush(false);
 
-        if (!s_fullSyncUnavailable && TryFullSync(stream.SafeFileHandle))
+        // IL2CPP's SafeFileHandle wraps a pointer to its own handle struct, not a descriptor, so the file is opened by path.
+        if (!s_fullSyncUnavailable && TryFullSync(stream.Name))
         {
             return;
         }
@@ -41,11 +41,25 @@ internal static class DiskSync
         }
     }
 
-    private static bool TryFullSync(SafeFileHandle handle)
+    private static bool TryFullSync(string path)
     {
         try
         {
-            return FileControl(handle, FullSyncCommand, 0) != -1;
+            var descriptor = AppleOpen(path, ReadOnly);
+
+            if (descriptor < 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                return AppleFileControl(descriptor, FullSyncCommand, 0) != -1;
+            }
+            finally
+            {
+                _ = AppleClose(descriptor);
+            }
         }
         catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
         {
@@ -114,9 +128,6 @@ internal static class DiskSync
             s_directorySyncUnavailable = true;
         }
     }
-
-    [DllImport("libSystem.dylib", EntryPoint = "fcntl", SetLastError = true)]
-    private static extern int FileControl(SafeFileHandle handle, int command, int argument);
 
     [DllImport("libSystem.dylib", EntryPoint = "open", SetLastError = true)]
     private static extern int AppleOpen([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags);

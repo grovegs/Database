@@ -4,6 +4,8 @@ namespace GroveGames.Database.Keys;
 
 internal sealed class GuidKeyCodec : IKeyCodec<Guid>
 {
+    public byte KeyType => 4;
+
     public void Write(ByteBuffer output, Guid key)
     {
         key.TryWriteBytes(output.Take(16));

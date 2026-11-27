@@ -6,20 +6,18 @@ namespace GroveGames.Database.Storage;
 internal sealed class HmacEntrySigner : IEntrySigner
 {
     private const int Length = 16;
-    private const int HashLength = 32;
-
     private const string ChainedSuffix = "/chained";
 
-    private readonly IncrementalHash _hash;
-    private readonly IncrementalHash _unchainedHash;
+    private readonly HmacSha256 _hash;
+    private readonly HmacSha256 _unchainedHash;
     private readonly bool _trustsExistingTags;
 
     public HmacEntrySigner(byte[] key, string name, bool trustsExistingTags)
     {
         _trustsExistingTags = trustsExistingTags;
         using var derivation = new HMACSHA256(key);
-        _hash = IncrementalHash.CreateHMAC(HashAlgorithmName.SHA256, derivation.ComputeHash(Encoding.UTF8.GetBytes(name + ChainedSuffix)));
-        _unchainedHash = IncrementalHash.CreateHMAC(HashAlgorithmName.SHA256, derivation.ComputeHash(Encoding.UTF8.GetBytes(name)));
+        _hash = new HmacSha256(derivation.ComputeHash(Encoding.UTF8.GetBytes(name + ChainedSuffix)));
+        _unchainedHash = new HmacSha256(derivation.ComputeHash(Encoding.UTF8.GetBytes(name)));
     }
 
     public int TagLength => Length;
@@ -47,16 +45,13 @@ internal sealed class HmacEntrySigner : IEntrySigner
 
     public void Dispose()
     {
-        _hash.Dispose();
-        _unchainedHash.Dispose();
     }
 
-    private static void Compute(IncrementalHash hash, ReadOnlySpan<byte> previousTag, ReadOnlySpan<byte> data, Span<byte> tag)
+    // Unity's IncrementalHash copies spans into new arrays, so the hash is computed in managed code to avoid an allocation per entry.
+    private static void Compute(HmacSha256 hash, ReadOnlySpan<byte> previousTag, ReadOnlySpan<byte> data, Span<byte> tag)
     {
-        Span<byte> result = stackalloc byte[HashLength];
-        hash.AppendData(previousTag);
-        hash.AppendData(data);
-        hash.TryGetHashAndReset(result, out _);
+        Span<byte> result = stackalloc byte[HmacSha256.HashLength];
+        hash.Compute(previousTag, data, result);
         result.Slice(0, Length).CopyTo(tag);
     }
 }

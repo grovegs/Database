@@ -12,10 +12,11 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
     private readonly string _directory;
     private readonly MessagePackSerializer _serializer;
     private readonly JsonSerializer _json;
-    private readonly DatabaseProtection _protection;
+    private DatabaseProtection _protection;
     private readonly Dictionary<string, IStore> _stores;
     private readonly Action<string, Exception>? _unreadableStoreHandler;
     private bool _disposed;
+    private bool _areExistingStoresSigned;
 
     public FileDatabase(string directory)
         : this(directory, DatabaseProtection.None)
@@ -50,20 +51,34 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         _stores = new Dictionary<string, IStore>(StringComparer.Ordinal);
         _unreadableStoreHandler = unreadableStoreHandler;
         _disposed = false;
+
+        _areExistingStoresSigned = true;
+
+        if (protection.TrustsExistingFiles)
+        {
+            _areExistingStoresSigned = ResignExistingStores();
+
+            if (_areExistingStoresSigned)
+            {
+                _protection = protection.WithoutTrust();
+            }
+        }
     }
 
     public string Directory => _directory;
+
+    internal bool AreExistingStoresSigned => _areExistingStoresSigned;
     public IReadOnlyCollection<string> OpenStoreNames => _stores.Keys;
 
     public IDocument<T> GetDocument<T>(string name) where T : new()
     {
-        return GetStore(name, (path, signer) => new Document<T>(path, _serializer, signer));
+        return GetStore(name, _serializer, static (path, signer, serializer) => new Document<T>(path, serializer, signer));
     }
 
     public IDocumentCollection<TKey, T> GetDocumentCollection<TKey, T>(string name, Func<T, TKey> keySelector) where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(keySelector);
-        return GetStore(name, (path, signer) => new DocumentCollection<TKey, T>(path, _serializer, keySelector, signer));
+        return GetStore(name, (_serializer, keySelector), static (path, signer, state) => new DocumentCollection<TKey, T>(path, state._serializer, state.keySelector, signer));
     }
 
     public bool IsCollection(string name)
@@ -97,6 +112,20 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         }
 
         store.Write(value);
+        return true;
+    }
+
+    public bool TryWriteItem(string name, int index, object value)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (!_stores.TryGetValue(name, out var store))
+        {
+            return false;
+        }
+
+        store.WriteItem(index, value);
         return true;
     }
 
@@ -167,14 +196,23 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         }
     }
 
-    private TStore GetStore<TStore>(string name, Func<string, IEntrySigner, TStore> create) where TStore : class, IStore
+    private TStore GetStore<TStore, TState>(string name, TState state, Func<string, IEntrySigner, TState, TStore> create) where TStore : class, IStore
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ValidateName(name);
 
         if (_stores.TryGetValue(name, out var existing))
         {
             return existing as TStore ?? throw new InvalidOperationException($"'{name}' is already open as a {existing.GetType().Name}.");
+        }
+
+        ValidateName(name);
+
+        foreach (var open in _stores.Keys)
+        {
+            if (string.Equals(open, name, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"'{name}' differs from the open store '{open}' only in case, and some file systems would give both the same file.");
+            }
         }
 
         var path = Path.Combine(_directory, name + Extension);
@@ -182,26 +220,26 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         try
         {
-            store = Create(name, path, create);
+            store = Create(name, path, state, create);
         }
         catch (Exception exception) when (_unreadableStoreHandler is not null && exception is not (IOException or UnauthorizedAccessException))
         {
             Quarantine(path);
             _unreadableStoreHandler(name, exception);
-            store = Create(name, path, create);
+            store = Create(name, path, state, create);
         }
 
         _stores.Add(name, store);
         return store;
     }
 
-    private TStore Create<TStore>(string name, string path, Func<string, IEntrySigner, TStore> create) where TStore : class, IStore
+    private TStore Create<TStore, TState>(string name, string path, TState state, Func<string, IEntrySigner, TState, TStore> create) where TStore : class, IStore
     {
         var signer = _protection.CreateSigner(name);
 
         try
         {
-            return create(path, signer);
+            return create(path, signer, state);
         }
         catch
         {
@@ -210,19 +248,56 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         }
     }
 
+    // A store left unopened while existing files are trusted would keep tags from the old key and fail its check later.
+    private bool ResignExistingStores()
+    {
+        var areSigned = true;
+
+        foreach (var path in System.IO.Directory.GetFiles(_directory, "*" + Extension))
+        {
+            var signer = _protection.CreateSigner(Path.GetFileNameWithoutExtension(path));
+
+            try
+            {
+                StoreFile.Resign(path, signer);
+            }
+            catch (FormatException)
+            {
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                areSigned = false;
+            }
+            finally
+            {
+                signer.Dispose();
+            }
+        }
+
+        return areSigned;
+    }
+
+    // Every quarantined copy is kept, because a store that fails to open may hold data a later build can read.
     private static void Quarantine(string path)
     {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
         var quarantined = path + ".corrupt";
 
-        if (File.Exists(quarantined))
+        for (var number = 1; File.Exists(quarantined); number++)
         {
-            File.Delete(quarantined);
+            quarantined = path + ".corrupt." + number.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        if (File.Exists(path))
-        {
-            File.Move(path, quarantined);
-        }
+        File.Move(path, quarantined);
+    }
+
+    private static bool IsAsciiLetterOrDigit(char character)
+    {
+        return character is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9');
     }
 
     private static void ValidateName(string name)
@@ -231,9 +306,9 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
 
         foreach (var character in name)
         {
-            if (!char.IsLetterOrDigit(character) && character != '_' && character != '-' && character != '.')
+            if (!IsAsciiLetterOrDigit(character) && character != '_' && character != '-' && character != '.')
             {
-                throw new ArgumentException($"'{name}' may only contain letters, digits, '_', '-' and '.'.", nameof(name));
+                throw new ArgumentException($"'{name}' may only contain ASCII letters, digits, '_', '-' and '.'.", nameof(name));
             }
         }
     }

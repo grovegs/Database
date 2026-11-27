@@ -327,6 +327,98 @@ public sealed class FileDatabaseTests : IDisposable
         Assert.Equal(_directory, database.Directory);
     }
 
+    [Fact]
+    public void GetDocumentCollection_KeyTypeChanged_QuarantinesAndKeepsEveryCopy()
+    {
+        using (var database = Open())
+        {
+            database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id).Upsert(new DatabaseItem { Id = 1 });
+        }
+
+        var reports = new List<string>();
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var database = new FileDatabase(_directory, DatabaseProtection.None, (name, exception) => reports.Add(exception.Message));
+            database.GetDocumentCollection<long, DatabaseItem>("items", item => item.Id).Upsert(new DatabaseItem { Id = 2 });
+            database.Dispose();
+            File.Delete(Path.Combine(_directory, "items.db"));
+            File.Copy(Path.Combine(_directory, "items.db.corrupt"), Path.Combine(_directory, "items.db"));
+        }
+
+        Assert.Equal(2, reports.Count);
+        Assert.Contains("key type", reports[0]);
+        Assert.True(File.Exists(Path.Combine(_directory, "items.db.corrupt")));
+        Assert.True(File.Exists(Path.Combine(_directory, "items.db.corrupt.1")));
+    }
+
+    [Fact]
+    public void GetDocument_NameDiffersOnlyInCase_Throws()
+    {
+        using var database = Open();
+        database.GetDocument<DatabaseItem>("Player");
+
+        Assert.Throws<InvalidOperationException>(() => database.GetDocument<DatabaseItem>("player"));
+    }
+
+    [Fact]
+    public void GetDocument_NonAsciiName_Throws()
+    {
+        using var database = Open();
+
+        Assert.Throws<ArgumentException>(() => database.GetDocument<DatabaseItem>("caf\u00e9"));
+    }
+
+    [Fact]
+    public void Upsert_StringKeyWithLoneSurrogate_Throws()
+    {
+        using var database = Open();
+        var collection = database.GetDocumentCollection<string, DatabaseNamed>("named", item => item.Name);
+
+        Assert.Throws<ArgumentException>(() => collection.Upsert(new DatabaseNamed { Name = "a\ud800" }));
+    }
+
+    [Fact]
+    public void Set_Null_StoresANewValueInMemoryAndOnDisk()
+    {
+        using (var database = Open())
+        {
+            database.GetDocument<DatabaseItem>("item").Set(null!);
+
+            Assert.NotNull(database.GetDocument<DatabaseItem>("item").Value);
+        }
+
+        using var reopened = Open();
+
+        Assert.NotNull(reopened.GetDocument<DatabaseItem>("item").Value);
+    }
+
+    [Fact]
+    public void TryWriteItem_KeyChanged_MovesTheItem()
+    {
+        using var database = Open();
+        var items = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+        items.Upsert(new DatabaseItem { Id = 1 });
+
+        database.TryWriteItem("items", 0, new DatabaseItem { Id = 5 });
+
+        Assert.False(items.Contains(1));
+        Assert.True(items.Contains(5));
+        Assert.Single(items);
+    }
+
+    [Fact]
+    public void TryWriteItem_KeyTakenByAnotherItem_Throws()
+    {
+        using var database = Open();
+        var items = database.GetDocumentCollection<int, DatabaseItem>("items", item => item.Id);
+        items.Upsert(new DatabaseItem { Id = 1 });
+        items.Upsert(new DatabaseItem { Id = 2 });
+
+        Assert.Throws<InvalidOperationException>(() => database.TryWriteItem("items", 0, new DatabaseItem { Id = 2 }));
+        Assert.Equal(2, items.Count);
+    }
+
     private FileDatabase Open()
     {
         return new FileDatabase(_directory);
@@ -337,4 +429,10 @@ public sealed class FileDatabaseTests : IDisposable
 public sealed class DatabaseItem
 {
     public int Id;
+}
+
+[Schema]
+public sealed class DatabaseNamed
+{
+    public string Name = string.Empty;
 }

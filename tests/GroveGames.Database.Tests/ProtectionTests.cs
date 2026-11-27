@@ -330,6 +330,68 @@ public sealed class ProtectionTests : IDisposable
         return 4 + 1 + BinaryPrimitives.ReadInt32LittleEndian(contents.AsSpan(start)) + 4 + 16;
     }
 
+    [Fact]
+    public void Open_TrustingANewKey_ResignsStoresThatAreNotOpened()
+    {
+        byte[] newKey = [.. Enumerable.Range(40, 32).Select(value => (byte)value)];
+
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 7 });
+            database.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id).Upsert(new ProtectedItem { Id = 1, Count = 3 });
+        }
+
+        using (var trusting = Open(DatabaseProtection.TamperCheck(newKey, true)))
+        {
+            trusting.GetDocument<ProtectedWallet>("wallet");
+        }
+
+        using var reopened = Open(DatabaseProtection.TamperCheck(newKey));
+
+        Assert.Equal(3, reopened.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id).Get(1).Count);
+        Assert.Equal(7, reopened.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+    }
+
+    [Fact]
+    public void Open_TrustingAndEverythingSigned_ReportsItAndStopsTrusting()
+    {
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 7 });
+        }
+
+        byte[] newKey = [.. Enumerable.Range(40, 32).Select(value => (byte)value)];
+        using var trusting = Open(DatabaseProtection.TamperCheck(newKey, true));
+
+        Assert.True(trusting.AreExistingStoresSigned);
+        Assert.Equal(7, trusting.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+    }
+
+    [Fact]
+    public void Set_Protected_DoesNotAllocatePerWrite()
+    {
+        using var database = Open(DatabaseProtection.TamperCheck(s_key));
+        var items = database.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id);
+        var item = new ProtectedItem { Id = 1, Count = 0 };
+        const int writes = 1000;
+
+        for (var i = 0; i < 100; i++)
+        {
+            item.Count = i;
+            items.Upsert(item);
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var i = 0; i < writes; i++)
+        {
+            item.Count = i;
+            items.Upsert(item);
+        }
+
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < writes, "A protected write allocated.");
+    }
+
     private FileDatabase Open(DatabaseProtection protection)
     {
         return new FileDatabase(_directory, protection);

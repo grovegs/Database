@@ -5,6 +5,8 @@ namespace GroveGames.Database.Keys;
 
 internal sealed class Int32KeyCodec : IKeyCodec<int>
 {
+    public byte KeyType => 1;
+
     public void Write(ByteBuffer output, int key)
     {
         BinaryPrimitives.WriteInt32LittleEndian(output.Take(4), key);

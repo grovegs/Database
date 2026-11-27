@@ -25,7 +25,7 @@ namespace GroveGames.Database.Unity
 #if GROVEGAMES_DEVELOPERTOOLS
             builder.AddDeveloperToolsPage<DatabasePage>(DatabasePage.PageOrder);
 #endif
-            return builder.AddSingleton(resolver => new DatabaseAutoSaveEntryPoint(resolver.Resolve<IDatabase>()));
+            return builder.AddSingleton(resolver => new DatabaseAutoSaveEntryPoint(resolver.Resolve<IDatabase>(), UnityDatabaseSettings.GetOrCreate().AutoSaveInterval));
         }
     }
 }

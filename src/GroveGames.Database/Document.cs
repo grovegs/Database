@@ -36,6 +36,7 @@ public sealed class Document<T> : IDocument<T>, IStore
 
     public void Set(T value)
     {
+        value ??= new T();
         WriteValue(value);
         _value = value;
         _entryCount++;
@@ -54,6 +55,11 @@ public sealed class Document<T> : IDocument<T>, IStore
         }
 
         Set(typed);
+    }
+
+    void IStore.WriteItem(int index, object value)
+    {
+        throw new InvalidOperationException("A document has no items.");
     }
 
     void IStore.WriteJson(JsonSerializer serializer, IBufferWriter<byte> output)

@@ -10,9 +10,11 @@ namespace GroveGames.Database.Unity
 
         [SerializeField] private string _folderName = "Database";
         [SerializeField] private bool _tamperProtection;
+        [SerializeField, Min(0f)] private float _autoSaveInterval = 60f;
 
         public string FolderName => _folderName;
         public bool TamperProtection => _tamperProtection;
+        public float AutoSaveInterval => _autoSaveInterval;
 
         public static UnityDatabaseSettings GetOrCreate()
         {
@@ -35,6 +37,16 @@ namespace GroveGames.Database.Unity
             }
 
             return s_instance;
+        }
+
+        private void OnValidate()
+        {
+            if (string.IsNullOrWhiteSpace(_folderName))
+            {
+                _folderName = "Database";
+            }
+
+            _autoSaveInterval = Mathf.Max(0f, _autoSaveInterval);
         }
     }
 }
