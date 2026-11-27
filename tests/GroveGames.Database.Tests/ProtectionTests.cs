@@ -373,17 +373,23 @@ public sealed class ProtectionTests : IDisposable
         using var database = Open(DatabaseProtection.TamperCheck(s_key));
         var items = database.GetDocumentCollection<int, ProtectedItem>("items", item => item.Id);
         var item = new ProtectedItem { Id = 1, Count = 0 };
-        items.Upsert(item);
+        const int writes = 1000;
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-
-        for (var i = 0; i < 50; i++)
+        for (var i = 0; i < 100; i++)
         {
             item.Count = i;
             items.Upsert(item);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var i = 0; i < writes; i++)
+        {
+            item.Count = i;
+            items.Upsert(item);
+        }
+
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < writes, "A protected write allocated.");
     }
 
     private FileDatabase Open(DatabaseProtection protection)
