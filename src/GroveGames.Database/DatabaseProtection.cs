@@ -29,10 +29,14 @@ public abstract class DatabaseProtection
         return new TamperCheckProtection((byte[])key.Clone(), trustExistingFiles);
     }
 
+    internal abstract bool TrustsExistingFiles { get; }
+
     internal abstract IEntrySigner CreateSigner(string storeName);
 
     private sealed class NoProtection : DatabaseProtection
     {
+        internal override bool TrustsExistingFiles => false;
+
         internal override IEntrySigner CreateSigner(string storeName)
         {
             return NoEntrySigner.Instance;
@@ -49,6 +53,8 @@ public abstract class DatabaseProtection
             _key = key;
             _trustExistingFiles = trustExistingFiles;
         }
+
+        internal override bool TrustsExistingFiles => _trustExistingFiles;
 
         internal override IEntrySigner CreateSigner(string storeName)
         {

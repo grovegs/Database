@@ -6,6 +6,7 @@ namespace GroveGames.Database.Storage;
 internal sealed class StoreFile : IDisposable
 {
     private const int HeaderLength = 8;
+    private const int KeyTypeIndex = 6;
     private const int EntryPrefixLength = 5;
     private const int ChecksumLength = 4;
     private const byte PlainVersion = 1;
@@ -17,6 +18,7 @@ internal sealed class StoreFile : IDisposable
     private readonly string _path;
     private readonly string _temporaryPath;
     private readonly StoreKind _kind;
+    private readonly byte _keyType;
     private readonly ByteBuffer _payload;
     private readonly IEntrySigner _signer;
     private readonly byte[] _chain;
@@ -25,15 +27,17 @@ internal sealed class StoreFile : IDisposable
     private FileStream _stream;
     private FileStream? _rewrite;
     private bool _dirty;
+    private bool _needsReopen;
     private bool _disposed;
     private byte[] _contents;
     private List<StoredEntry> _entries;
 
-    private StoreFile(string path, StoreKind kind, FileStream stream, byte[] contents, List<StoredEntry> entries, IEntrySigner signer, byte[] chain)
+    private StoreFile(string path, StoreKind kind, byte keyType, FileStream stream, byte[] contents, List<StoredEntry> entries, IEntrySigner signer, byte[] chain)
     {
         _path = path;
         _temporaryPath = path + ".tmp";
         _kind = kind;
+        _keyType = keyType;
         _stream = stream;
         _signer = signer;
         _chain = chain;
@@ -53,6 +57,11 @@ internal sealed class StoreFile : IDisposable
 
     public static StoreFile Open(string path, StoreKind kind, IEntrySigner signer)
     {
+        return Open(path, kind, 0, signer);
+    }
+
+    public static StoreFile Open(string path, StoreKind kind, byte keyType, IEntrySigner signer)
+    {
         var temporary = path + ".tmp";
 
         if (File.Exists(temporary))
@@ -64,7 +73,7 @@ internal sealed class StoreFile : IDisposable
         var contents = exists ? File.ReadAllBytes(path) : [];
         var entries = new List<StoredEntry>();
         var chain = new byte[signer.TagLength];
-        var validLength = Parse(path, contents, kind, entries, signer, chain, out var current);
+        var validLength = Parse(path, contents, kind, keyType, entries, signer, chain, out var current);
         var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
 
         try
@@ -72,7 +81,7 @@ internal sealed class StoreFile : IDisposable
             if (validLength == 0)
             {
                 stream.SetLength(0);
-                stream.Write(CreateHeader(kind, signer.TagLength > 0), 0, HeaderLength);
+                stream.Write(CreateHeader(kind, keyType, signer.TagLength > 0), 0, HeaderLength);
                 DiskSync.Flush(stream);
                 validLength = HeaderLength;
                 current = true;
@@ -88,6 +97,12 @@ internal sealed class StoreFile : IDisposable
                 DiskSync.Flush(stream);
             }
 
+            if (keyType != 0 && contents.Length >= HeaderLength && contents[KeyTypeIndex] == 0)
+            {
+                stream.Position = KeyTypeIndex;
+                stream.WriteByte(keyType);
+            }
+
             stream.Position = validLength;
         }
         catch
@@ -96,7 +111,7 @@ internal sealed class StoreFile : IDisposable
             throw;
         }
 
-        var file = new StoreFile(path, kind, stream, contents, entries, signer, chain);
+        var file = new StoreFile(path, kind, keyType, stream, contents, entries, signer, chain);
 
         if (current)
         {
@@ -122,6 +137,21 @@ internal sealed class StoreFile : IDisposable
         return file;
     }
 
+    public static void Resign(string path, IEntrySigner signer)
+    {
+        var header = new byte[HeaderLength];
+
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            if (stream.Read(header, 0, HeaderLength) < HeaderLength || !header.AsSpan(0, 4).SequenceEqual(s_magic))
+            {
+                return;
+            }
+        }
+
+        Open(path, (StoreKind)header[5], header[KeyTypeIndex], signer).Dispose();
+    }
+
     public ByteBuffer BeginEntry(EntryKind kind)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -144,6 +174,11 @@ internal sealed class StoreFile : IDisposable
         var chain = _rewrite is null ? _chain : _rewriteChain;
         var tag = entry.Slice(EntryPrefixLength + payloadLength + ChecksumLength, tagLength);
         _signer.Sign(chain, signed, tag);
+        if (_rewrite is null && _needsReopen)
+        {
+            Reopen();
+        }
+
         var stream = _rewrite ?? _stream;
         var start = stream.Position;
 
@@ -153,8 +188,7 @@ internal sealed class StoreFile : IDisposable
         }
         catch
         {
-            stream.SetLength(start);
-            stream.Position = start;
+            RollBack(stream, start);
             throw;
         }
 
@@ -185,6 +219,11 @@ internal sealed class StoreFile : IDisposable
             return;
         }
 
+        if (_needsReopen)
+        {
+            Reopen();
+        }
+
         DiskSync.Flush(_stream);
         _dirty = false;
     }
@@ -198,7 +237,7 @@ internal sealed class StoreFile : IDisposable
 
         try
         {
-            rewrite.Write(CreateHeader(_kind, _signer.TagLength > 0), 0, HeaderLength);
+            rewrite.Write(CreateHeader(_kind, _keyType, _signer.TagLength > 0), 0, HeaderLength);
             write(this, state);
             DiskSync.Flush(rewrite);
         }
@@ -224,13 +263,19 @@ internal sealed class StoreFile : IDisposable
         }
         finally
         {
-            _stream = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
-            _stream.Position = _stream.Length;
-
             if (replaced)
             {
                 _rewriteChain.CopyTo(_chain, 0);
                 _dirty = false;
+            }
+
+            try
+            {
+                Reopen();
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _needsReopen = true;
             }
         }
     }
@@ -261,6 +306,33 @@ internal sealed class StoreFile : IDisposable
         }
     }
 
+    private void Reopen()
+    {
+        _stream = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
+        _stream.Position = _stream.Length;
+        _needsReopen = false;
+    }
+
+    // When the truncation fails too, the next entry still starts where this one did, so the partial bytes are overwritten.
+    private static void RollBack(FileStream stream, long start)
+    {
+        try
+        {
+            stream.SetLength(start);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        try
+        {
+            stream.Position = start;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     private void DeleteTemporary()
     {
         try
@@ -272,7 +344,7 @@ internal sealed class StoreFile : IDisposable
         }
     }
 
-    private static int Parse(string path, byte[] contents, StoreKind kind, List<StoredEntry> entries, IEntrySigner signer, byte[] chain, out bool current)
+    private static int Parse(string path, byte[] contents, StoreKind kind, byte keyType, List<StoredEntry> entries, IEntrySigner signer, byte[] chain, out bool current)
     {
         current = true;
 
@@ -298,6 +370,11 @@ internal sealed class StoreFile : IDisposable
         if (contents[5] != (byte)kind)
         {
             throw new FormatException($"'{path}' stores a {(StoreKind)contents[5]}, not a {kind}.");
+        }
+
+        if (keyType != 0 && contents[KeyTypeIndex] != 0 && contents[KeyTypeIndex] != keyType)
+        {
+            throw new FormatException($"'{path}' stores keys of another type, so the collection's key type was changed.");
         }
 
         var tagLength = authenticated ? signer.TagLength : 0;
@@ -347,8 +424,8 @@ internal sealed class StoreFile : IDisposable
         return position;
     }
 
-    private static byte[] CreateHeader(StoreKind kind, bool authenticated)
+    private static byte[] CreateHeader(StoreKind kind, byte keyType, bool authenticated)
     {
-        return [s_magic[0], s_magic[1], s_magic[2], s_magic[3], authenticated ? ChainedVersion : PlainVersion, (byte)kind, 0, 0];
+        return [s_magic[0], s_magic[1], s_magic[2], s_magic[3], authenticated ? ChainedVersion : PlainVersion, (byte)kind, keyType, 0];
     }
 }

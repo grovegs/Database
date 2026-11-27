@@ -36,6 +36,7 @@ public sealed class Document<T> : IDocument<T>, IStore
 
     public void Set(T value)
     {
+        value ??= new T();
         WriteValue(value);
         _value = value;
         _entryCount++;

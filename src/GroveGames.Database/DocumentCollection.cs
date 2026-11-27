@@ -24,7 +24,7 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
         _keySelector = keySelector;
         _keyCodec = KeyCodecs.Create<TKey>();
         _items = [];
-        _file = StoreFile.Open(path, StoreKind.Collection, signer);
+        _file = StoreFile.Open(path, StoreKind.Collection, _keyCodec.KeyType, signer);
 
         try
         {
