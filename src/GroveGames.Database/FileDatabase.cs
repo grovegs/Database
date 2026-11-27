@@ -12,10 +12,11 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
     private readonly string _directory;
     private readonly MessagePackSerializer _serializer;
     private readonly JsonSerializer _json;
-    private readonly DatabaseProtection _protection;
+    private DatabaseProtection _protection;
     private readonly Dictionary<string, IStore> _stores;
     private readonly Action<string, Exception>? _unreadableStoreHandler;
     private bool _disposed;
+    private bool _areExistingStoresSigned;
 
     public FileDatabase(string directory)
         : this(directory, DatabaseProtection.None)
@@ -51,13 +52,22 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
         _unreadableStoreHandler = unreadableStoreHandler;
         _disposed = false;
 
+        _areExistingStoresSigned = true;
+
         if (protection.TrustsExistingFiles)
         {
-            ResignExistingStores();
+            _areExistingStoresSigned = ResignExistingStores();
+
+            if (_areExistingStoresSigned)
+            {
+                _protection = protection.WithoutTrust();
+            }
         }
     }
 
     public string Directory => _directory;
+
+    internal bool AreExistingStoresSigned => _areExistingStoresSigned;
     public IReadOnlyCollection<string> OpenStoreNames => _stores.Keys;
 
     public IDocument<T> GetDocument<T>(string name) where T : new()
@@ -239,8 +249,10 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
     }
 
     // A store left unopened while existing files are trusted would keep tags from the old key and fail its check later.
-    private void ResignExistingStores()
+    private bool ResignExistingStores()
     {
+        var areSigned = true;
+
         foreach (var path in System.IO.Directory.GetFiles(_directory, "*" + Extension))
         {
             var signer = _protection.CreateSigner(Path.GetFileNameWithoutExtension(path));
@@ -249,14 +261,20 @@ public sealed class FileDatabase : IDatabase, IDatabaseInspector
             {
                 StoreFile.Resign(path, signer);
             }
-            catch (Exception exception) when (exception is FormatException or IOException or UnauthorizedAccessException)
+            catch (FormatException)
             {
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                areSigned = false;
             }
             finally
             {
                 signer.Dispose();
             }
         }
+
+        return areSigned;
     }
 
     // Every quarantined copy is kept, because a store that fails to open may hold data a later build can read.

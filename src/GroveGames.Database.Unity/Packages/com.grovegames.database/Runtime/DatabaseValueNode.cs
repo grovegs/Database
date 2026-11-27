@@ -28,6 +28,7 @@ namespace GroveGames.Database.Unity
         private DatabaseValueKind _kind;
         private Type _valueType;
         private readonly bool _isEditable;
+        private bool _isSetElement;
 
         public string Label => _label;
         public string Path => _path;
@@ -56,7 +57,9 @@ namespace GroveGames.Database.Unity
 
         public string Text => Format(Value);
 
-        private bool CanEditChildren => Value != null && IsEditable;
+        private bool CanEditChildren => Value != null && !IsInsideSet && (!Value.GetType().IsValueType || IsEditable);
+
+        private bool IsInsideSet => _isSetElement || (_parent != null && _parent.IsInsideSet);
 
         private DatabaseValueNode(DatabaseValueNode? parent, string label, string path, Type declaredType, object? value, bool isEditable, Action<object?>? assign)
         {
@@ -365,7 +368,9 @@ namespace GroveGames.Database.Unity
                 }
 
                 var label = "[" + _children.Count.ToString(CultureInfo.InvariantCulture) + "]";
-                _children.Add(new DatabaseValueNode(this, label, Path + "/" + label, itemType, item, false, null));
+                var child = new DatabaseValueNode(this, label, Path + "/" + label, itemType, item, false, null);
+                child._isSetElement = true;
+                _children.Add(child);
             }
         }
 

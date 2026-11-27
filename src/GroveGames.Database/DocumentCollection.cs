@@ -163,7 +163,9 @@ public sealed class DocumentCollection<TKey, T> : IDocumentCollection<TKey, T>, 
                 throw new InvalidOperationException($"Another item already has the key {newKey}.");
             }
 
+            Upsert(typed);
             Remove(previousKey);
+            return;
         }
 
         Upsert(typed);

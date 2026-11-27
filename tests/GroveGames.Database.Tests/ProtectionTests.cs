@@ -353,6 +353,21 @@ public sealed class ProtectionTests : IDisposable
     }
 
     [Fact]
+    public void Open_TrustingAndEverythingSigned_ReportsItAndStopsTrusting()
+    {
+        using (var database = Open(DatabaseProtection.TamperCheck(s_key)))
+        {
+            database.GetDocument<ProtectedWallet>("wallet").Set(new ProtectedWallet { Gold = 7 });
+        }
+
+        byte[] newKey = [.. Enumerable.Range(40, 32).Select(value => (byte)value)];
+        using var trusting = Open(DatabaseProtection.TamperCheck(newKey, true));
+
+        Assert.True(trusting.AreExistingStoresSigned);
+        Assert.Equal(7, trusting.GetDocument<ProtectedWallet>("wallet").Value.Gold);
+    }
+
+    [Fact]
     public void Set_Protected_DoesNotAllocatePerWrite()
     {
         using var database = Open(DatabaseProtection.TamperCheck(s_key));

@@ -74,7 +74,13 @@ namespace GroveGames.Database.Unity
             try
             {
                 Directory.CreateDirectory(directory);
-                File.WriteAllBytes(GetTrustMarkerPath(directory), Array.Empty<byte>());
+
+                using (var stream = new FileStream(GetTrustMarkerPath(directory), FileMode.Create, FileAccess.Write))
+                {
+                    Storage.DiskSync.Flush(stream);
+                }
+
+                Storage.DiskSync.FlushDirectory(directory);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {

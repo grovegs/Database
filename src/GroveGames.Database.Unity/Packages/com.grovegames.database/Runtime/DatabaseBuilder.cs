@@ -57,7 +57,7 @@ namespace GroveGames.Database.Unity
             {
                 var database = new FileDatabase(directory, protection, static (name, exception) => Debug.LogError($"The '{name}' store could not be read, so it was moved aside as a .corrupt copy and opened empty. {exception}"));
 
-                if (_tamperProtection && isKeyStored)
+                if (_tamperProtection && isKeyStored && database.AreExistingStoresSigned)
                 {
                     DatabaseKeyStore.DeleteTrustMarker(directory);
                 }
